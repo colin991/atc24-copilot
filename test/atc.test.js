@@ -129,3 +129,13 @@ test("your calls: clearance as filed, squawk code, hold at B2, runway 03 1", () 
   // "expect" with nothing to plan for is not an instruction.
   assert.equal(understand("jetblue 29 whiskey expect im unfortunately busy", me).unknown, true);
 });
+
+test("mangled letters-and-numbers callsigns still count (N522PL)", () => {
+  const me = { callsign: "Quake-3032", aliases: ["N522PL"] };
+  assert.equal(understand("in november 5 to 2 pop a limo you're clear for takeoff runway 29", me).forMe, true);
+  assert.equal(understand("Copy number 522, Papalima cleared a 25 center, winds acknowledged.", me).forMe, true);
+  assert.equal(understand("to five center. - Copy to five center, November five to two, Papalima.", me).forMe, true);
+  // Same digits, other letters: someone else.
+  assert.notEqual(understand("November 522 Alpha Bravo, climb and maintain 5000", me).forMe, true);
+  assert.equal(understand("in november 5 to 2 pop a limo you're clear for takeoff runway 29", me).readback, "Cleared for takeoff runway 29, November 522 Papa Lima");
+});

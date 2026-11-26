@@ -163,7 +163,48 @@ ipcMain.handle("atis", () => getJson(`${RADAR}/api/atis`));
 ipcMain.handle("airports", () => getJson(`${RADAR}/airports.json`));
 // Gate numbers and where they are, from the radar's ground charts.
 ipcMain.handle("taxi-labels", () => getJson(`${RADAR}/taxi-labels.json`));
-ipcMain.handle("plan", (_e, q) => getJson(`${LIVE}/api/plan?q=${encodeURIComponent(String(q || "").slice(0, 60))}`));
+// All flight plans the live server knows, from the start of its event
+// stream (cached for 20 s so this stays light).
+let plansCache = { at: 0, plans: null };
+async function allPlans() {
+  if (plansCache.plans && Date.now() - plansCache.at < 20000) return plansCache.plans;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const r = await fetch(`${LIVE}/events`, { headers: { "User-Agent": UA }, signal: ctrl.signal });
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const i = buf.indexOf("event: flightPlans\ndata: ");
+      if (i >= 0) {
+        const end = buf.indexOf("\n\n", i);
+        if (end > 0) {
+          const plans = JSON.parse(buf.slice(i + "event: flightPlans\ndata: ".length, end));
+          plansCache = { at: Date.now(), plans };
+          return plans;
+        }
+      }
+      if (buf.length > 5e6) break;
+    }
+  } catch {} finally { clearTimeout(timer); try { ctrl.abort(); } catch {} }
+  return plansCache.plans;
+}
+const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+ipcMain.handle("plan", async (_e, q) => {
+  const want = (Array.isArray(q) ? q : [q]).map(norm).filter(Boolean);
+  if (!want.length) return null;
+  const plans = await allPlans();
+  if (!plans) return null;
+  let best = null;
+  for (const fp of Object.values(plans)) {
+    const names = [fp.robloxName, fp.realcallsign, fp.callsign].map(norm);
+    if (want.some((w) => names.includes(w)) && (!best || fp.receivedAt > best.receivedAt)) best = fp;
+  }
+  return best ? { callsign: best.realcallsign || best.callsign, filed: best.callsign || null, departing: best.departing, arriving: best.arriving, route: best.route, flightrules: best.flightrules, flightlevel: best.flightlevel, aircraft: best.aircraft } : null;
+});
 ipcMain.handle("stt-status", async () => {
   try { const r = await fetch(`${RADAR}/api/stt`, { headers: { "User-Agent": UA } }); return r.ok ? await r.json() : { fast: false }; }
   catch { return { fast: false }; }

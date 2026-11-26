@@ -24,7 +24,8 @@ export function splitCallsign(cs) {
   const name = (firstNum > 0 ? words.slice(0, firstNum) : words.filter((w) => !/\d/.test(w)).slice(0, 1)).join("");
   const num = (s.match(/\d+/g) || []).join("");
   const after = firstNum >= 0 ? words.slice(firstNum + 1).filter((w) => !/\d/.test(w)) : [];
-  const suffix = after.map((w) => (PHONETIC[w] ? PHONETIC[w].toLowerCase() : w)).filter((w) => /^[a-z]$/.test(w)).join("");
+  // Letters after the number: "w", "pl" (N52PL), or spelled "whiskey".
+  const suffix = after.flatMap((w) => (PHONETIC[w] ? [PHONETIC[w].toLowerCase()] : /^[a-z]{1,3}$/.test(w) ? w.split("") : [])).join("");
   // The name as a pattern that allows spaces between its words ("sky orenji").
   const nameRe = name.split("").join("\\s?");
   return { name, num, suffix, nameRe };
@@ -37,7 +38,37 @@ export function spokenCallsign(cs) {
   const { name, num, suffix } = splitCallsign(cs);
   if (!name && !num) return "";
   const letters = suffix.split("").filter(Boolean).map((l) => cap(PHONETIC_WORD[l] || l.toUpperCase()));
-  return [cap(name), num, ...letters].filter(Boolean).join(" ");
+  // A one-letter prefix is spoken too: "N52PL" -> "November 52 Papa Lima"
+  const first = name.length === 1 ? cap(PHONETIC_WORD[name] || name.toUpperCase()) : cap(name);
+  return [first, num, ...letters].filter(Boolean).join(" ");
+}
+
+// Phonetic words as speech-to-text mangles them ("pop a limo" = papa lima).
+const PHONETIC_SOUNDS = [
+  [/\bpop+ ?a\b/g, "papa"], [/\blimo\b|\blee ?ma\b/g, "lima"], [/\bal ?fa\b/g, "alpha"], [/\bcharley\b/g, "charlie"],
+  [/\bjuliette?\b/g, "juliet"], [/\bkey ?low\b/g, "kilo"], [/\bmic\b/g, "mike"], [/\bwhisk(?:e)?y\b/g, "whiskey"],
+  [/\bx ?ray\b/g, "xray"], [/\byankie\b/g, "yankee"], [/\bsierra\b|\bciera\b/g, "sierra"], [/\bvictory\b/g, "victor"],
+];
+const GLUED = new RegExp(`(${Object.keys(PHONETIC).join("|")})(?=(${Object.keys(PHONETIC).join("|")}))`, "g");
+
+// The digits and spelled-out letters of a stretch of speech:
+// "november 5 to 2 papa lima" -> { digits: "52", letters: "npl" }
+function callsignBits(s) {
+  let t = ` ${s} `;
+  for (const [re, w] of PHONETIC_SOUNDS) t = t.replace(re, w);
+  t = t.replace(GLUED, "$1 ")                          // "papalima" -> "papa lima"
+    .replace(/(\d)\s+(?:to|too)\s+(?=\d)/g, "$1 2 ");   // "5 to 2" is "five two two" -> 522
+  let digits = "", letters = "";
+  for (const w of t.split(/[\s,]+/)) {
+    if (/^\d+$/.test(w)) digits += w;
+    else if (PHONETIC[w]) letters += PHONETIC[w].toLowerCase();
+    else if (/^[a-z]\d+$/.test(w)) { letters += w[0]; digits += w.slice(1); }
+  }
+  return { digits, letters };
+}
+function fuzzyCallsign(s, me) {
+  const { digits, letters } = callsignBits(s);
+  return digits.includes(me.num) && me.suffix.split("").every((l) => letters.includes(l));
 }
 
 // Is this call for one of my callsigns? Returns which one ATC used.
@@ -60,6 +91,10 @@ function addressee(text, mes) {
     const joined = (head.match(/\b\d{1,4}\b/g) || []).join("");
     if (!sfx && me.num.length >= 3 && joined.includes(me.num)) return { forMe: true, said: head, me };
     if (new RegExp(`\\b${me.nameRe}\\s*${me.num}\\b`).test(text)) return { forMe: true, said: null, me };
+    // Letters-and-numbers callsigns get mangled ("november 5 to 2 pop a limo",
+    // "number 522 papalima" for N52PL): compare just the digits and the
+    // spelled letters near the start of the call.
+    if (me.suffix && [parts.slice(0, 2), parts.slice(1, 3), parts.slice(-2)].some((p) => fuzzyCallsign(p.join(" "), me))) return { forMe: true, said: head, me };
   }
   // Someone else's callsign up front: a word + a number
   const first = head.split(" ");

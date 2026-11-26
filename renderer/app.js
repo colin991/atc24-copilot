@@ -4,6 +4,7 @@ import { buildCalls } from "../src/calls.js";
 import { targets, track, nextPhase, phaseTip } from "../src/guide.js";
 import { closestEmptyGate } from "../src/gates.js";
 import { Listener, listInputs, wavToFloat } from "./audio.js";
+import { loadVad } from "./vad.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -144,7 +145,9 @@ function onText(text) {
   const now = Date.now();
   if (last && now - last.at < JOIN_MS) {
     const alone = understand(text, { callsign: myCallsign(), aliases: aliases(), flight: S.flight });
-    if (alone.forMe !== true && !alone.to) {
+    // Only onto a call that was for you, and only if this piece is an instruction
+    // (not your friends chatting on Discord in between).
+    if (last.result?.forMe && alone.forMe !== true && !alone.to && !alone.unknown) {
       undo(last.result);
       text = `${last.text} , ${text}`;
     }
@@ -165,7 +168,7 @@ function handle(text, joined = false) {
   // someone else, or where no callsign was heard, go in the list below,
   // greyed out, and never get a readback with your callsign on it.
   if (r.forMe !== true) {
-    return { el: S.onlyMe ? null : addOther(r), pushed: 0 };
+    return { el: S.onlyMe ? null : addOther(r), pushed: 0, forMe: false };
   }
   showNow(r, joined);
   let pushed = 0;
@@ -178,7 +181,7 @@ function handle(text, joined = false) {
     renderCalls();
     renderLive();
   }
-  return { el: null, pushed };
+  return { el: null, pushed, forMe: true };
 }
 
 function addOther(r) {
@@ -357,8 +360,9 @@ $("live").addEventListener("click", (e) => {
 
 // ---- My calls -------------------------------------------------------------------
 async function pollPlan() {
-  const q = S.flightCs || S.callsign.trim();
-  if (!q) return;
+  // Look up by your Roblox name (most reliable) and callsigns.
+  const q = [S.flight?.playerName, S.flightCs, S.callsign.trim()].filter(Boolean);
+  if (!q.length) return;
   const p = await app.plan(q);
   if (p && (!S.plan || p.departing !== S.plan.departing || p.arriving !== S.plan.arriving || p.filed !== S.plan.filed)) { S.plan = p; showAtcHint(); }
   renderCalls();
@@ -441,3 +445,8 @@ function status(text, bad = false) {
   el.hidden = !text;
   el.classList.toggle("bad", !!bad);
 }
+
+// ---- speech detector -------------------------------------------------------------
+// Tells voices from engine noise; until it is loaded (or if it fails), loudness is used.
+loadVad().then((vad) => { listener.setVad(vad); console.log("[vad] speech detector ready"); })
+  .catch((e) => console.log("[vad] speech detector unavailable, using loudness:", e?.message || e));

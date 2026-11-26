@@ -62,7 +62,10 @@ export class Listener {
     this.ctx = null; this.stream = null;
   }
 
-  reset() { this.floor = 0.003; this.pre = []; this.clip = null; this.loud = 0; this.quiet = 0; }
+  reset() { this.floor = 0.003; this.pre = []; this.clip = null; this.loud = 0; this.quiet = 0; this.chain = Promise.resolve(); }
+
+  // vad(frame) -> probability it's speech (Silero). Without it: loudness.
+  setVad(vad) { this.vad = vad; }
 
   frame(f) {
     let sum = 0;
@@ -71,11 +74,23 @@ export class Listener {
     // Background noise: falls fast, rises slowly, so speech doesn't drag it up.
     this.floor = rms < this.floor ? this.floor * 0.9 + rms * 0.1 : this.floor * 0.998 + rms * 0.002;
     this.floor = Math.max(this.floor, 0.0005);
-    const speech = rms > this.floor * this.sensitivity && rms > 0.004;
-    this.onLevel?.(rms, this.floor, speech || !!this.clip);
+    const loud = rms > this.floor * this.sensitivity && rms > 0.004;
+    if (!this.vad) return this.decide(f, rms, loud, null);
+    // The speech detector runs one frame at a time, in order (~1 ms each).
+    this.chain = this.chain.then(() => this.vad(f)).then(
+      (p) => this.decide(f, rms, rms > 0.001 && p > this.speechAt(), p),
+      () => this.decide(f, rms, loud, null),
+    );
+  }
+
+  // Sensitivity slider (1.6 .. 6) -> how sure the detector must be (0.3 .. 0.7).
+  speechAt() { return Math.min(0.75, Math.max(0.25, 0.3 + (this.sensitivity - 1.6) * 0.09)); }
+
+  decide(f, rms, speech, prob) {
+    this.onLevel?.(rms, this.floor, speech || !!this.clip, prob);
     // Every ~5 s, a line for troubleshooting (seen when run with COPILOT_SMOKE).
     this.n = (this.n || 0) + 1; this.sum = (this.sum || 0) + rms; this.max = Math.max(this.max || 0, rms);
-    if (this.n >= 156) { console.log(`[vad] avg ${(this.sum / this.n).toFixed(4)} max ${this.max.toFixed(4)} floor ${this.floor.toFixed(4)} threshold ${(this.floor * this.sensitivity).toFixed(4)} inClip ${!!this.clip}${this.clip ? ` (${(this.clip.length * 0.032).toFixed(1)} s)` : ""}`); this.n = 0; this.sum = 0; this.max = 0; }
+    if (this.n >= 156) { console.log(`[vad] ${this.vad ? "speech detector" : "loudness"} avg ${(this.sum / this.n).toFixed(4)} max ${this.max.toFixed(4)} floor ${this.floor.toFixed(4)} threshold ${(this.floor * this.sensitivity).toFixed(4)} inClip ${!!this.clip}${this.clip ? ` (${(this.clip.length * 0.032).toFixed(1)} s)` : ""}`); this.n = 0; this.sum = 0; this.max = 0; }
     if (this.paused) { this.clip = null; return; }
 
     if (!this.clip) {
