@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src 'self' blob:; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://cdn.jsdelivr.net blob: data:; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <title>ATC 24 Copilot</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="panel" class="glass">
+    <header id="bar">
+      <span class="dot" id="dot" title="Listening"></span>
+      <b>ATC 24 Copilot</b>
+      <span id="mode" class="chip"></span>
+      <span class="grow"></span>
+      <button id="listenBtn" title="Pause / resume listening (Ctrl+Shift+P)">❚❚</button>
+      <button id="settingsBtn" title="Settings">⚙</button>
+      <button id="minBtn" title="Minimise">–</button>
+      <button id="closeBtn" title="Quit">✕</button>
+    </header>
+
+    <div id="flight" class="strip">Set your callsign in ⚙ settings</div>
+
+    <section id="now" class="card empty">
+      <div class="label">DO</div>
+      <ol id="doList"><li class="muted">Waiting for ATC…</li></ol>
+      <div class="label">SAY</div>
+      <div id="say" class="say muted" title="Click to copy">—</div>
+      <div id="heard" class="heard"></div>
+    </section>
+
+    <section id="history"></section>
+
+    <div id="meter"><i id="level"></i><i id="floor"></i></div>
+    <div id="update" class="update" hidden>Update ready · <a href="#" id="installUpdate">restart to install</a></div>
+
+    <section id="settings" class="drawer" hidden>
+      <label>Your callsign or Roblox username
+        <input id="callsign" placeholder="e.g. Speedbird-208" spellcheck="false" />
+      </label>
+      <label>Server
+        <select id="server"><option value="main">Main</option><option value="event">Event</option></select>
+      </label>
+      <label>Listen to
+        <select id="source"></select>
+      </label>
+      <label>Sensitivity <span id="sensVal"></span>
+        <input id="sens" type="range" min="1.6" max="6" step="0.1" />
+      </label>
+      <label class="row"><input id="onlyMe" type="checkbox" /> Only show calls for me</label>
+      <label>See-through <span id="opVal"></span>
+        <input id="opacity" type="range" min="0.35" max="1" step="0.05" />
+      </label>
+      <label>Test a call (type what ATC said)
+        <input id="test" placeholder="Speedbird 208, turn left heading 270, climb 5000" spellcheck="false" />
+      </label>
+      <p class="hint">
+        <b>Ctrl+Shift+X</b> click through the overlay · <b>Ctrl+Shift+H</b> hide/show · <b>Ctrl+Shift+P</b> pause<br />
+        Speech: <span id="sttMode">checking…</span> · v<span id="ver"></span>
+      </p>
+    </section>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

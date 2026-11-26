@@ -1,0 +1,4 @@
+node_modules/
+dist/
+model/data/
+model/out/

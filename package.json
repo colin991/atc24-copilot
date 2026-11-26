@@ -1,0 +1,67 @@
+{
+  "name": "atc24-copilot",
+  "productName": "ATC 24 Copilot",
+  "version": "0.1.0",
+  "description": "Hears ATC in ATC 24 and tells you what to do and what to read back",
+  "author": "colin991",
+  "license": "GPL-3.0-or-later",
+  "main": "main.cjs",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "electron-builder --win --publish never"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.5.0",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.colin991.atc24copilot",
+    "productName": "ATC 24 Copilot",
+    "artifactName": "ATC24-Copilot-Setup.${ext}",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "renderer/**",
+      "src/**",
+      "build/icon.png",
+      "package.json",
+      "!node_modules/onnxruntime-node/**",
+      "!node_modules/onnxruntime-web/**",
+      "!node_modules/onnxruntime-common/**",
+      "!node_modules/sharp/**",
+      "!node_modules/@img/**",
+      "!node_modules/@huggingface/transformers/src/**",
+      "!node_modules/@huggingface/transformers/types/**",
+      "!node_modules/@huggingface/transformers/dist/*.map",
+      "!node_modules/@huggingface/transformers/dist/*.cjs",
+      "!node_modules/@huggingface/transformers/dist/transformers.node*",
+      "!node_modules/@huggingface/transformers/dist/transformers.web*",
+      "!node_modules/@huggingface/transformers/dist/transformers.js"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "ATC 24 Copilot"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "colin991",
+      "repo": "atc24-copilot"
+    }
+  }
+}

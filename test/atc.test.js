@@ -1,0 +1,92 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { understand, spokenCallsign } from "../src/atc.js";
+import { normalize } from "../src/words.js";
+
+const me = { callsign: "Speedbird-208" };
+const types = (r) => r.items.map((i) => i.type);
+
+test("spoken numbers become digits", () => {
+  assert.equal(normalize("turn left heading two seven zero"), "turn left heading 270");
+  assert.equal(normalize("climb and maintain five thousand"), "climb and maintain 5000");
+  assert.equal(normalize("one thousand five hundred feet"), "1500 feet");
+  assert.equal(normalize("contact approach one two zero decimal two five"), "contact approach 120.25");
+  assert.equal(normalize("descend flight level one two zero"), "descend fl120");
+  assert.equal(normalize("runway two five left cleared for takeoff"), "runway 25L cleared for takeoff");
+  assert.equal(normalize("climb to 5,000 feet"), "climb to 5000 feet");
+});
+
+test("callsign readback style", () => {
+  assert.equal(spokenCallsign("Speedbird-208"), "Speedbird 208");
+});
+
+test("heading and altitude, with your flight for direction", () => {
+  const r = understand("Speedbird two zero eight, turn left heading two seven zero, climb and maintain five thousand", { ...me, flight: { heading: 310, altitude: 2100 } });
+  assert.equal(r.forMe, true);
+  assert.deepEqual(types(r), ["heading", "altitude"]);
+  assert.match(r.items[0].do, /Turn LEFT to heading 270 \(now 310\)/);
+  assert.match(r.items[1].do, /Climb to 5,000 ft \(now 2100 ft\)/);
+  assert.equal(r.readback, "Left heading 270, climb and maintain 5000, Speedbird 208");
+});
+
+test("works out the turn direction when ATC doesn't say it", () => {
+  const r = understand("Speedbird 208 fly heading 090", { ...me, flight: { heading: 350 } });
+  assert.equal(r.items[0].dir, "right");
+  assert.equal(r.readback, "Fly heading 090, Speedbird 208");
+});
+
+test("calls for someone else are flagged", () => {
+  const r = understand("Shamrock 4512, descend and maintain 3000", me);
+  assert.equal(r.forMe, false);
+});
+
+test("takeoff, landing and line up", () => {
+  assert.equal(understand("Speedbird 208, runway 25 left, cleared for takeoff", me).readback, "Cleared for takeoff runway 25L, Speedbird 208");
+  assert.equal(understand("Speedbird 208 runway 07 cleared to land", me).readback, "Cleared to land runway 07, Speedbird 208");
+  assert.deepEqual(types(understand("Speedbird 208 line up and wait runway 25L", me)), ["lineup"]);
+});
+
+test("frequency changes", () => {
+  const r = understand("Speedbird 208, contact Rockford Approach on 120.25, good day", me);
+  assert.equal(r.items[0].type, "contact");
+  assert.equal(r.readback, "Rockford Approach 120.25, Speedbird 208");
+});
+
+test("taxi with a route and hold short", () => {
+  const r = understand("Speedbird 208 taxi to runway 25L via alpha, bravo two, hold short runway 25L", me);
+  assert.deepEqual(types(r), ["taxi", "holdshort"]);
+  assert.deepEqual(r.items[0].route, ["A", "B2"]);
+  assert.equal(r.readback, "Taxi to runway 25L via A, B2, hold short runway 25L, Speedbird 208");
+});
+
+test("IFR clearance is read back in one go", () => {
+  const r = understand("Speedbird 208, cleared to IRFD via the GRASS1C departure, runway 25, initial climb 3000, squawk 4521", me);
+  assert.equal(r.items.length, 1);
+  assert.equal(r.items[0].type, "clearance");
+  assert.match(r.readback, /^Cleared to IRFD, GRASS1C departure, .*runway 25, climb 3000, squawk 4521, Speedbird 208$/);
+});
+
+test("squawk, speed, direct, flight levels", () => {
+  assert.equal(understand("Speedbird 208 squawk 7421", me).readback, "Squawk 7421, Speedbird 208");
+  assert.equal(understand("Speedbird 208 reduce speed 180 knots", me).readback, "Speed 180, Speedbird 208");
+  assert.equal(understand("Speedbird 208 proceed direct GRASS", me).readback, "Direct GRASS, Speedbird 208");
+  assert.equal(understand("Speedbird 208 climb flight level one two zero", me).readback, "Climb and maintain flight level 120, Speedbird 208");
+});
+
+test("say altitude answers from your flight", () => {
+  const r = understand("Speedbird 208 say altitude", { ...me, flight: { altitude: 4980 } });
+  assert.equal(r.readback, "5000 feet, Speedbird 208");
+});
+
+test("radar contact only needs a roger", () => {
+  assert.equal(understand("Speedbird 208 radar contact", me).readback, "Roger, Speedbird 208");
+});
+
+test("approach clearance and go around", () => {
+  assert.equal(understand("Speedbird 208, cleared ILS approach runway 25L", me).readback, "Cleared ILS approach runway 25L, Speedbird 208");
+  assert.equal(understand("Speedbird 208 go around", me).readback, "Going around, Speedbird 208");
+});
+
+test("nothing recognised falls through to the model", () => {
+  assert.equal(understand("Speedbird 208 the weather is lovely today", me).unknown, true);
+});

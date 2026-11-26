@@ -1,0 +1,51 @@
+name: Build and release
+
+# Every push to main builds the Windows installer and publishes it as a
+# GitHub Release (v0.1.<run>). The /download page on the radar links to the
+# latest one, and installed copies update themselves from it.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Set version
+        shell: bash
+        run: |
+          VERSION="0.1.${{ github.run_number }}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Build installer
+        run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v$VERSION" \
+            dist/ATC24-Copilot-Setup.exe \
+            dist/ATC24-Copilot-Setup.exe.blockmap \
+            dist/latest.yml \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "ATC 24 Copilot $VERSION" \
+            --notes "Windows installer. Installed copies update themselves."
