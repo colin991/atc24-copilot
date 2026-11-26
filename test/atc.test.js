@@ -98,3 +98,15 @@ test("taxiways with numbers stay whole (K5, not K)", () => {
   assert.equal(understand("Speedbird 208 cross runway 25 at K5", me).readback, "Cross runway 25 at K5, Speedbird 208");
   assert.equal(understand("Speedbird 208 taxi to runway 07 via alpha two, kilo five, hold short runway 07", me).readback, "Taxi to runway 07 via A2, K5, hold short runway 07, Speedbird 208");
 });
+
+test("no callsign heard is never treated as for me", () => {
+  const r = understand("if we're going to maintain 500", { callsign: "Jetbloo-3032" });
+  assert.equal(r.forMe, null);
+  const other = understand("Shamrock 4512, descend and maintain 3000", { callsign: "Jetbloo-3032" });
+  assert.equal(other.forMe, false);
+  assert.equal(other.to, "Shamrock 4512");
+});
+
+test("a callsign number split up by speech-to-text still counts", () => {
+  assert.equal(understand("jet blue 30 32, climb and maintain 5000", { callsign: "Jetbloo-3032" }).forMe, true);
+});

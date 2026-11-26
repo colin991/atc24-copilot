@@ -36,6 +36,9 @@ function addressee(text, me) {
   const nums = head.match(/\b\d{2,5}\b/g) || [];
   if (!me.num) return { forMe: null, said: null };
   if (nums.includes(me.num)) return { forMe: true, said: head };
+  // Number split up by speech-to-text: "jet blue 30 32" -> 3032
+  const joined = (head.match(/\b\d{1,4}\b/g) || []).join("");
+  if (me.num.length >= 3 && joined.includes(me.num)) return { forMe: true, said: head };
   // Anywhere else (e.g. "turn left heading 270 speedbird 208")
   if (new RegExp(`\\b${me.name}\\s*${me.num}\\b`).test(text) || new RegExp(`\\b${me.num}\\b`).test(text.split(" , ").pop())) return { forMe: true, said: null };
   // Someone else's callsign up front: a word we know as an airline + a number
@@ -334,5 +337,7 @@ export function understand(transcript, { callsign = "", flight = null } = {}) {
   let readback = "";
   if (says.length) readback = `${cap(says.join(", "))}${cs ? `, ${cs}` : ""}`;
   else if (uniq.length) readback = cs ? `Roger, ${cs}` : "Roger";
-  return { forMe: addr.forMe, items: uniq, readback, heard, unknown: uniq.length === 0 };
+  // Who it was for, when it was someone else ("shamrock 4512").
+  const to = addr.forMe === false && addr.said ? addr.said.split(" ").slice(0, 2).map(cap).join(" ") : null;
+  return { forMe: addr.forMe, to, items: uniq, readback, heard, unknown: uniq.length === 0 };
 }

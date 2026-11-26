@@ -100,16 +100,31 @@ async function onClip(wav) {
 
 function handle(text) {
   const r = understand(text, { callsign: myCallsign(), flight: S.flight });
-  if (r.forMe === false && S.onlyMe) { addHistory(r, false); return; }
-  if (r.unknown && r.forMe !== true) { addHistory(r, false); return; } // chatter, not an instruction
+  // Only a call with YOUR callsign gets the big DO / SAY card. Calls for
+  // someone else, or where no callsign was heard, go in the list below,
+  // greyed out, and never get a readback with your callsign on it.
+  if (r.forMe !== true) {
+    if (!S.onlyMe && !r.unknown) addOther(r);
+    return;
+  }
   showNow(r);
-  if (r.forMe !== false && !r.unknown) {
+  if (!r.unknown) {
     // A new clearance starts a new flight.
     if (r.items.some((i) => i.type === "clearance")) S.recent = [];
     S.recent.push(...r.items);
     S.recent = S.recent.slice(-30);
     renderCalls();
   }
+}
+
+function addOther(r) {
+  const el = document.createElement("div");
+  el.className = "past other";
+  const what = r.items.map((i) => i.say).filter(Boolean).join(", ");
+  el.innerHTML = `${r.to ? `For <b>${esc(r.to)}</b>` : "<b>No callsign</b>"} · ${esc(what || r.heard)}`;
+  el.title = `Heard: ${r.heard}`;
+  $("history").prepend(el);
+  while ($("history").children.length > 12) $("history").lastChild.remove();
 }
 
 function showNow(r) {

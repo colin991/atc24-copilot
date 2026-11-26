@@ -98,3 +98,5 @@ body.callsMode #now, body.callsMode #history { display: none; }
 .updates button:disabled { opacity: .5; cursor: default; }
 .drawer { scrollbar-width: none; }
 .drawer::-webkit-scrollbar { display: none; }
+.past.other { opacity: .6; font-style: italic; }
+.past.other b { font-style: normal; }
