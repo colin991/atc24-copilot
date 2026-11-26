@@ -7,7 +7,7 @@ const RATE = 16000;
 const FRAME = 512;                 // 32 ms
 const PRE_ROLL = 10;               // frames kept from before the start (~0.3 s)
 const START_FRAMES = 3;            // ~0.1 s above the noise to start
-const END_SILENCE = 24;            // ~0.75 s quiet to end
+const END_SILENCE = 34;            // ~1.1 s quiet to end (ATC pauses mid-call)
 const MAX_FRAMES = Math.round(25 * RATE / FRAME);
 const MIN_FRAMES = 14;             // ignore blips under ~0.45 s
 

@@ -67,6 +67,26 @@ function addressee(text, mes) {
   return { forMe: null, said: null };
 }
 
+// --- airports ----------------------------------------------------------------
+// Names as said on the radio (and as speech-to-text writes them) -> ICAO.
+const AIRPORT_NAMES = [
+  [/^(?:greater )?rockford|^rock ?ford/, "IRFD"], [/^perth|^per\b|^pert\b/, "IPPH"], [/^tokyo/, "ITKO"],
+  [/^larnaca|^lanarca/, "ILAR"], [/^izolirani|^izzy/, "IZOL"], [/^paphos|^pathos/, "IPAP"], [/^mellor|^mela/, "IMLR"],
+  [/^keflavik|^keflavic/, "IKFL"], [/^sauthemptona|^southampton/, "ISAU"], [/^grindavik/, "IGRV"],
+  [/^saint barth|^st barth|^saint bart/, "IBTH"], [/^lukla/, "ILKL"], [/^barra/, "IBAR"], [/^henstridge/, "IHEN"],
+  [/^mcconnell|^mc connell/, "IIAB"], [/^(?:air base )?garry|^gary/, "IGAR"], [/^boltic/, "IBLT"],
+  [/^scampton|^raf scampton/, "ISCM"], [/^(?:al )?najaf/, "IJAF"], [/^saba/, "IDCS"], [/^skopelos/, "ISKP"],
+  [/^training cent/, "ITRC"], [/^pingeyri|^ping/, "ITEY"], [/^bird island/, "IBRD"], [/^ufo/, "IUFO"],
+];
+function airportFor(text) {
+  const t = String(text || "").trim().replace(/^the /, "");
+  if (/^i[a-z]{3}$/.test(t)) return t.toUpperCase();
+  for (const [re, icao] of AIRPORT_NAMES) if (re.test(t)) return icao;
+  // Something else that looks like a place name (one or two words).
+  if (/^[a-z]{3,}(?: [a-z]{3,})?$/.test(t) && !/\b(?:go|you|me|us|it|them|that|this|proceed|continue|climb|descend)\b/.test(t)) return t.replace(/\b\w/g, (ch) => ch.toUpperCase());
+  return null;
+}
+
 // --- helpers ---------------------------------------------------------------
 const pad3 = (h) => String(((h % 360) + 360) % 360 || 360).padStart(3, "0");
 const fmtAlt = (ft) => ft >= 18000 && ft % 100 === 0 ? `FL${String(ft / 100).padStart(3, "0")}` : `${ft.toLocaleString("en-US")} ft`;
@@ -119,26 +139,36 @@ function turnDir(from, to) {
 // more specific phrases first.
 const RULES = [
   // IFR clearance: "cleared to IRFD via ..., runway 25, initial climb 3000, squawk 4521"
+  // "you are clear to Perth International as filed, expect 1000, ... squawk code 6741"
   (c, all, ctx) => {
     // An airport spelled out letter by letter: "cleared to i l k l"
-    const spelled = /\bcleared to ([a-z]) ([a-z]) ([a-z]) ([a-z])\b/.exec(c);
+    const spelled = /\bclear(?:ed)? to ([a-z]) ([a-z]) ([a-z]) ([a-z])\b/.exec(c);
     if (spelled) { const joined = `cleared to ${spelled.slice(1).join("")}`; c = c.replace(spelled[0], joined); all = all.replace(spelled[0], joined); }
-    const m = /\bcleared to\s+([a-z]{4}|[a-z]+(?: [a-z]+)?)\b(?!.*\b(land|takeoff|take off)\b)/.exec(c);
-    if (!m || /\bcleared to (land|cross|enter|push)\b/.test(c)) return null;
-    const dest = m[1].length === 4 ? m[1].toUpperCase() : cap(m[1]);
-    const via = /\bvia\s+(.+?)(?=$| , |\bdeparture\b|\brunway\b|\binitial|\bclimb|\bsquawk)/.exec(all);
+    const m = /\bclear(?:ed)? to\s+((?!land|cross|enter|push|taxi|take|line|the runway|runway|depart|go\b)[a-z][a-z ]*?)(?=\s+(?:airport|international|intl|as filed|via|on|with|,|then)\b|\s*,|$)/.exec(c);
+    if (!m) return null;
+    const dest = airportFor(m[1]);
+    if (!dest) return null;
+    const asFiled = /\bas filed\b/.test(all);
+    const via = asFiled ? null : /\bvia\s+(.+?)(?=$| , |\bdeparture\b|\brunway\b|\binitial|\bclimb|\bsquawk|\bexpect)/.exec(all);
     const dep = /\b([a-z]+ ?\d[a-z]?)\s+departure\b/.exec(all);
     const rwy = parseRunway(all);
-    const init = /\b(?:initial(?:ly)? (?:climb|altitude)|climb (?:and maintain|to)?)\s+(fl\d{2,3}|\d{3,5})/.exec(all);
-    const sq = /\bsquawk\s+([0-7]{4})\b/.exec(all);
-    const parts = [`cleared to ${dest}`];
+    const init = /\b(?:initial(?:ly)? (?:climb|altitude)|climb (?:and maintain|to)?|maintain)\s+(fl\d{2,3}|\d{3,5}|0\d{2})\b/.exec(all);
+    const expect = /\bexpect\s+(?:flight level\s+|fl)?(fl\d{2,3}|\d{2,5})\b/.exec(all);
+    const sq = /\bsquawk\s+(?:code\s+)?([0-7]{4})\b/.exec(all);
+    const fmt = (v) => (v.startsWith("fl") ? v.toUpperCase() : /^0\d\d$/.test(v) ? String(+v * 100) : /^\d{2,3}$/.test(v) && +v < 500 ? `FL${v.padStart(3, "0")}` : v);
+    const parts = [`cleared to ${dest}${asFiled ? " as filed" : ""}`];
     if (dep) parts.push(`${dep[1].toUpperCase()} departure`);
-    if (via) parts.push(`via ${via[1].trim()}`);
+    if (via && !(dep && via[1].replace(/W/g, "").includes(dep[1].replace(/W/g, "")))) parts.push(`via ${via[1].trim()}`);
     if (rwy) parts.push(`runway ${rwy}`);
-    if (init) parts.push(`climb ${init[1].startsWith("fl") ? init[1].toUpperCase() : init[1]}`);
+    if (init) parts.push(`climb ${fmt(init[1])}`);
+    if (expect) parts.push(`expect ${fmt(expect[1])}`);
+    // "departure (frequency) will be 123.3"
+    const depFreq = /\bdeparture(?: frequency)?(?: (?:will be|is|on))?\s+(1[1-3]\d\.\d{1,3})\b/.exec(all);
+    if (depFreq) parts.push(`departure ${depFreq[1]}`);
     if (sq) parts.push(`squawk ${sq[1]}`);
     ctx.consumedAll = true; // the whole call is one clearance
-    return [{ type: "clearance", dest, runway: rwy, squawk: sq?.[1], do: `IFR clearance to ${dest}${rwy ? `, departing runway ${rwy}` : ""}${init ? `, first climb to ${init[1].startsWith("fl") ? init[1].toUpperCase() : init[1] + " ft"}` : ""}${sq ? `. Set squawk ${sq[1]}` : ""}.`, say: parts.join(", ") }];
+    const doText = [`IFR clearance to ${dest}${asFiled ? " (your filed route)" : ""}`, rwy && `departing runway ${rwy}`, init && `first climb to ${fmt(init[1])}${/^FL/.test(fmt(init[1])) ? "" : " ft"}`, expect && `expect ${fmt(expect[1])} later`].filter(Boolean).join(", ");
+    return [{ type: "clearance", dest, runway: rwy, squawk: sq?.[1], do: `${doText}.${sq ? ` Set squawk ${sq[1]}.` : ""}`, say: parts.join(", ") }];
   },
   // Takeoff / landing / line up
   (c, all) => {
@@ -177,10 +207,11 @@ const RULES = [
     return [{ type: "startup", do: "Start your engines.", say: "start up approved" }];
   },
   (c) => {
-    if (!/\bhold short\b/.test(c)) return null;
+    if (!/\bhold short\b|\bhold at\b/.test(c)) return null;
+    c = c.replace(/\bhold at\b/, "hold short of"); // "hold at B2"
     const rwy = parseRunway(c);
     // "hold short of K5", "hold short runway 25 at K5"
-    const twyWord = (/\bhold short (?:of )?(?:taxiway )?([a-z]\d{1,2}|[a-z]+)\b/.exec(c) || [])[1];
+    const twyWord = (/\bhold short (?:of )?(?:taxiway )?([a-z]\d{1,2}|[a-z]+(?: \d{1,2}\b)?)\b/.exec(c) || [])[1];
     const twy = twyWord && twyWord !== "runway" ? letters(twyWord).join("") : "";
     const at = (/\b(?:at|on)\s+(?:taxiway\s+)?([a-z]\d{0,2}|[a-z]+)\b/.exec(c) || [])[1];
     const atTwy = at ? letters(at).join("") : "";
@@ -258,8 +289,8 @@ const RULES = [
   },
   // Squawk
   (c) => {
-    if (/\bsquawk ident\b|\bident\b/.test(c) && !/\bsquawk\s+[0-7]{4}/.test(c)) return [{ type: "ident", do: "Press IDENT on your transponder.", say: "ident" }];
-    const m = /\bsquawk\s+([0-7]{4})\b/.exec(c);
+    if (/\bsquawk ident\b|\bident\b/.test(c) && !/\bsquawk\s+(?:code\s+)?[0-7]{4}/.test(c)) return [{ type: "ident", do: "Press IDENT on your transponder.", say: "ident" }];
+    const m = /\bsquawk\s+(?:code\s+)?([0-7]{4})\b/.exec(c); // "squawk code 6741"
     if (!m) return null;
     return [{ type: "squawk", code: m[1], do: `Set your transponder to ${m[1]}.`, say: `squawk ${m[1]}` }];
   },
@@ -292,11 +323,17 @@ const RULES = [
     return [{ type: "holdpos", do: "STOP where you are and wait.", say: "holding position" }];
   },
   (c) => {
-    const m = /\bexpect\s+(.+)/.exec(c);
-    if (!m) return null;
+    // Only things worth planning for: a runway, an approach, an altitude, vectors.
+    if (!/\bexpect\b/.test(c)) return null;
     const rwy = parseRunway(c);
-    const what = rwy ? (/\b(ils|rnav|visual)\b/.exec(c) ? `${/\b(ils|rnav|visual)\b/.exec(c)[1].toUpperCase()} approach runway ${rwy}` : `runway ${rwy}`) : m[1];
-    return [{ type: "expect", do: `Plan for ${what}.`, say: `expect ${what}` }];
+    const appr = /\b(ils|rnav|visual)\b/.exec(c);
+    const alt = /\bexpect\s+(?:flight level\s+|fl)?(fl\d{2,3}|\d{3,5})\b/.exec(c);
+    let what = null;
+    if (rwy) what = appr ? `${appr[1].toUpperCase()} approach runway ${rwy}` : `runway ${rwy}`;
+    else if (alt) what = alt[1].startsWith("fl") ? alt[1].toUpperCase() : +alt[1] < 500 ? `FL${alt[1].padStart(3, "0")}` : alt[1];
+    else if (/\bexpect (?:radar )?vectors\b/.test(c)) what = "vectors";
+    if (!what) return null;
+    return [{ type: "expect", do: `Plan for ${what}${alt && !rwy ? " later (don't climb to it yet)" : ""}.`, say: `expect ${what}` }];
   },
   (c) => {
     const m = /\breport\s+(.+)/.exec(c);
@@ -336,6 +373,8 @@ function clauses(text) {
     // "runway 25L , cleared for takeoff": the runway belongs to the next clause.
     if (prev && /^runway \S+$/.test(prev)) { out[out.length - 1] = `${prev} ${p}`; continue; }
     // "via alpha , bravo 2": taxiway names continue the route.
+    // "hold short , bravo 2": the taxiway belongs to the hold short.
+    if (prev && /\bhold (?:short|at)(?: of)?$/.test(prev) && TWY_WORD.test(p)) { out[out.length - 1] = `${prev} ${p}`; continue; }
     if (prev && /\bvia\b/.test(prev) && TWY_WORD.test(p)) { out[out.length - 1] = `${prev} , ${p}`; continue; }
     out.push(p);
   }

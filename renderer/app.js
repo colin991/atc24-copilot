@@ -103,28 +103,54 @@ async function onClip(wav) {
   try {
     const r = await transcribe(wav);
     if (!r || r.error || !r.text || JUNK.test(r.text.trim()) || r.text.trim().split(/\s+/).length < 2) return;
-    handle(r.text);
+    onText(r.text);
   } finally { busy--; setDot(); }
 }
 
-function handle(text) {
+// ATC often pauses mid-call ("...expect 3000" ... "squawk 6741"), which cuts
+// one call into pieces. A piece that comes within a few seconds and doesn't
+// start with a callsign is joined to the call before it and read again as one.
+const JOIN_MS = 5000;
+let last = null; // { text, at, result }
+function onText(text) {
+  const now = Date.now();
+  if (last && now - last.at < JOIN_MS) {
+    const alone = understand(text, { callsign: myCallsign(), aliases: aliases(), flight: S.flight });
+    if (alone.forMe !== true && !alone.to) {
+      undo(last.result);
+      text = `${last.text} , ${text}`;
+    }
+  }
+  const result = handle(text, !!(last && text.startsWith(last.text)));
+  last = { text, at: Date.now(), result };
+}
+// Take back what the previous piece added, before showing the joined call.
+function undo(res) {
+  if (!res) return;
+  if (res.el) res.el.remove();
+  if (res.pushed) S.recent.splice(-res.pushed, res.pushed);
+}
+
+function handle(text, joined = false) {
   const r = understand(text, { callsign: myCallsign(), aliases: aliases(), flight: S.flight });
   // Only a call with YOUR callsign gets the big DO / SAY card. Calls for
   // someone else, or where no callsign was heard, go in the list below,
   // greyed out, and never get a readback with your callsign on it.
   if (r.forMe !== true) {
-    if (!S.onlyMe && !r.unknown) addOther(r);
-    return;
+    return { el: !S.onlyMe && !r.unknown ? addOther(r) : null, pushed: 0 };
   }
-  showNow(r);
+  showNow(r, joined);
+  let pushed = 0;
   if (!r.unknown) {
     // A new clearance starts a new flight.
     if (r.items.some((i) => i.type === "clearance")) S.recent = [];
     S.recent.push(...r.items);
+    pushed = r.items.length;
     S.recent = S.recent.slice(-30);
     renderCalls();
     renderLive();
   }
+  return { el: null, pushed };
 }
 
 function addOther(r) {
@@ -135,12 +161,15 @@ function addOther(r) {
   el.title = `Heard: ${r.heard}`;
   $("history").prepend(el);
   while ($("history").children.length > 12) $("history").lastChild.remove();
+  return el;
 }
 
-function showNow(r) {
+function showNow(r, joined = false) {
   const card = $("now");
-  // Move the current one into history first.
-  if (card.dataset.payload) addHistory(JSON.parse(card.dataset.payload), true);
+  // Move the current one into history first (not when it's the same call, joined up).
+  if (card.dataset.payload && !joined) addHistory(JSON.parse(card.dataset.payload), true);
+  card.dataset.at = String(Date.now());
+  card.classList.remove("stale");
   card.dataset.payload = JSON.stringify(r);
   card.classList.remove("empty", "fresh", "other");
   void card.offsetWidth; // restart the animation
@@ -336,3 +365,22 @@ window.__calls = { S, renderCalls, renderLive, updatePhase };
 if (window.copilot) startAudio(); else { $("heard").textContent = "Browser preview: type a call in ⚙ settings to test."; setDot(); }
 window.__test = handle; // for trying calls from the dev console
 window.__clip = onClip;
+window.__text = (t) => onText(t); // for testing joined-up calls
+
+// ---- the card ages out ------------------------------------------------------------
+// Shows how long ago the call was; after 30 s it moves into the list below.
+const CARD_MS = 30000;
+setInterval(() => {
+  const card = $("now");
+  if (!card.dataset.payload || !card.dataset.at) { $("age").textContent = ""; return; }
+  const age = Date.now() - +card.dataset.at;
+  $("age").textContent = age > 4000 ? `${Math.round(age / 1000)} s ago` : "";
+  if (age > CARD_MS) {
+    addHistory(JSON.parse(card.dataset.payload), true);
+    delete card.dataset.payload; delete card.dataset.at;
+    card.classList.add("empty");
+    $("doList").innerHTML = '<li class="muted">Waiting for ATC…</li>';
+    $("say").textContent = "—"; $("say").classList.add("muted");
+    $("heard").textContent = ""; $("age").textContent = "";
+  }
+}, 1000);

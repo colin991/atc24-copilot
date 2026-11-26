@@ -110,3 +110,5 @@ body.callsMode #now, body.callsMode #history { display: none; }
 .tip .ts { margin-top: 5px; font-weight: 700; color: var(--say); cursor: pointer; user-select: text; }
 .tip .ts.copied::after { content: "  copied"; font-weight: 500; color: var(--muted); font-size: 11px; }
 body.callsMode .live { display: none; }
+
+.age { float: right; font-weight: 600; letter-spacing: 0; color: var(--muted); }

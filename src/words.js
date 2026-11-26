@@ -101,6 +101,11 @@ const MISHEARD = [
   // "tax you to gate", "tacks via alpha" = taxi
   [/\btax(?:i)? you\b|\btacks\b|\btaxing\b/g, "taxi"],
   [/\btax\b(?= (?:to|via|again|onto|into|back)\b)/g, "taxi"],
+  // "whole drop", "hold shut" = hold short
+  [/\bwhole\b(?= (?:short|at|drop|shut|position))/g, "hold"],
+  [/\bhold (?:drop|shut|shore|sure)\b/g, "hold short"],
+  // Runway said digit by digit: "runway 03 1" / "runway 3 1" = runway 31
+  [/\brunway (0?\d) (\d)\b(?![\d.]| ?(?:thousand|hundred|knots|feet|miles))/g, (m, a, b) => (+`${a}${b}` >= 1 && +`${a}${b}` <= 36 ? `runway ${+`${a}${b}`}` : m)],
   // Gate / stand numbers said digit by digit: "gate 1 0" = gate 10
   [/\b(gate|stand|parking|spot)\s+(\d)\s+(\d)\b(?!\s*\d)/g, "$1 $2$3"],
 ];

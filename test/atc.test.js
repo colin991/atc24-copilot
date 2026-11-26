@@ -118,3 +118,14 @@ test("the callsign ATC uses from your flight plan (JetBlue 29W) counts as you", 
   // Another pilot's 29 without your letter isn't you.
   assert.notEqual(understand("Shamrock 29, climb and maintain 5000", { callsign: "JetBloo-3032", aliases: ["JetBlue 29W"] }).forMe, true);
 });
+
+test("your calls: clearance as filed, squawk code, hold at B2, runway 03 1", () => {
+  const me = { callsign: "JetBloo-3032", aliases: ["JetBlue 29W"] };
+  assert.equal(understand("jetblue 29 whiskey, you are clear to per international airport as filed expect 1000 , and then the departure will be 123.3 and expect the squawk code 6741", me).readback,
+    "Cleared to IPPH as filed, expect 1000, departure 123.3, squawk 6741, Jetblue 29 Whiskey");
+  assert.equal(understand("jetblue 29 whiskey, you are clear to taxi to runway 03 1 via a2 , whole drop , bravo 2", me).readback, "Taxi to runway 31 via A2, hold short B2, Jetblue 29 Whiskey");
+  assert.equal(understand("jetblue 29 whiskey taxi to runway 25 via alpha, hold at bravo 2", me).readback, "Taxi to runway 25 via A, hold short B2, Jetblue 29 Whiskey");
+  assert.equal(understand("jetblue 29 whiskey good day, you can tax you to gate 1 0 via alpha", me).readback, "Taxi to gate 10 via A, Jetblue 29 Whiskey");
+  // "expect" with nothing to plan for is not an instruction.
+  assert.equal(understand("jetblue 29 whiskey expect im unfortunately busy", me).unknown, true);
+});
