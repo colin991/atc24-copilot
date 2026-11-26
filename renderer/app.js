@@ -1,6 +1,7 @@
 // The overlay: hears a call -> text -> what to do + what to say back.
 import { understand, spokenCallsign } from "../src/atc.js";
 import { buildCalls } from "../src/calls.js";
+import { targets, track, nextPhase, phaseTip } from "../src/guide.js";
 import { Listener, listInputs, wavToFloat } from "./audio.js";
 
 const $ = (id) => document.getElementById(id);
@@ -30,6 +31,7 @@ const S = {
   atis: [],          // ATIS for every airport
   airports: null,    // airport positions
   recent: [],        // ATC instructions for you this flight (for "My calls")
+  phase: "unknown",  // parked / taxiing / airborne / landing / vacate / stopped / taxiin / parkedin
 };
 const save = (k, v) => { S[k] = v; localStorage.setItem(k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)); };
 
@@ -55,7 +57,7 @@ function renderFlight() {
   const f = S.flight;
   if (!S.callsign.trim()) $("flight").innerHTML = "Set your callsign in ⚙ settings";
   else if (!f) $("flight").innerHTML = `<b>${esc(S.callsign)}</b> · not on the radar right now`;
-  else $("flight").innerHTML = `<b>${esc(S.flightCs)}</b> · ${esc(f.aircraftType || "")} · ${f.isOnGround ? "on ground" : `${Math.round(f.altitude).toLocaleString()} ft`} · HDG ${String(Math.round(f.heading)).padStart(3, "0")} · ${Math.round(f.groundSpeed || 0)} kt`;
+  else $("flight").innerHTML = `<b>${esc(S.flightCs)}</b> · ${esc(f.aircraftType || "")} · ${f.isOnGround ? "on ground" : `${Math.round(f.altitude).toLocaleString()} ft`} · HDG ${String(Math.round(f.heading)).padStart(3, "0")} · ${Math.round(f.speed ?? f.groundSpeed ?? 0)} kt${f.speed != null && Math.abs((f.speed || 0) - (f.groundSpeed || 0)) > 15 ? ` (GS ${Math.round(f.groundSpeed || 0)})` : ""}`;
 }
 const myCallsign = () => S.flightCs || S.callsign;
 // Other names ATC may use: what you typed in settings, and the callsign
@@ -121,6 +123,7 @@ function handle(text) {
     S.recent.push(...r.items);
     S.recent = S.recent.slice(-30);
     renderCalls();
+    renderLive();
   }
 }
 
@@ -257,7 +260,31 @@ window.__showUpdate = showUpdate; // for checking the panel
 const warmUp = () => localWhisper(new Uint8Array(44 + 16000 * 2).buffer.slice(0)).catch(() => {});
 app.sttStatus().then((s) => { S.fast = !!s.fast; setStt(S.fast ? "fast (online)" : "built-in (loading…)"); if (!S.fast) warmUp(); });
 pollFlight();
-setInterval(() => { pollFlight().then(renderCalls); }, 3000); // the radar's feed updates every ~3 s
+setInterval(() => { pollFlight().then(() => { updatePhase(); renderLive(); renderCalls(); }); }, 3000); // the radar's feed updates every ~3 s
+
+// ---- live targets and what to do next ------------------------------------------------
+function updatePhase() {
+  const before = S.phase;
+  S.phase = nextPhase(S.phase, null, S.flight, S.recent);
+  // Just landed: jump to the ATC view so the "what now" shows up.
+  if (before === "airborne" && S.phase === "landing" && document.body.classList.contains("callsMode")) document.querySelector('#tabs button[data-tab="atc"]').click();
+}
+let lastLive = "";
+function renderLive() {
+  const lines = track(targets(S.recent), S.flight);
+  const landRwy = [...S.recent].reverse().find((i) => i.type === "land" || i.type === "approach")?.runway || null;
+  const tip = phaseTip(S.phase, S.flight, { callsign: sayCallsign(), runway: landRwy });
+  const html = lines.map((l) => `<div class="trk ${l.done ? "ok" : l.kind}">${esc(l.text)}</div>`).join("")
+    + (tip ? `<div class="tip"><div class="tt">${esc(tip.title)}</div><div>${esc(tip.text)}</div>${tip.say ? `<div class="ts" title="Click to copy">SAY: ${esc(tip.say)}</div>` : ""}</div>` : "");
+  if (html === lastLive) return;
+  lastLive = html;
+  $("live").innerHTML = html;
+  $("live").hidden = !html;
+}
+$("live").addEventListener("click", (e) => {
+  const ts = e.target.closest(".ts"); if (!ts) return;
+  navigator.clipboard.writeText(ts.textContent.replace(/^SAY: /, "")).then(() => { ts.classList.add("copied"); setTimeout(() => ts.classList.remove("copied"), 1200); });
+});
 
 // ---- My calls -------------------------------------------------------------------
 async function pollPlan() {
@@ -304,7 +331,7 @@ document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("cli
   renderCalls();
 }));
 if (localStorage.getItem("tab") === "calls") document.querySelector('#tabs button[data-tab="calls"]').click();
-window.__calls = { S, renderCalls };
+window.__calls = { S, renderCalls, renderLive, updatePhase };
 if (window.copilot) startAudio(); else { $("heard").textContent = "Browser preview: type a call in ⚙ settings to test."; setDot(); }
 window.__test = handle; // for trying calls from the dev console
 window.__clip = onClip;

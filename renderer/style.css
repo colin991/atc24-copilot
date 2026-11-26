@@ -101,3 +101,12 @@ body.callsMode #now, body.callsMode #history { display: none; }
 .past.other { opacity: .6; font-style: italic; }
 .past.other b { font-style: normal; }
 .drawer .sub { font-size: 10.5px; color: var(--muted); }
+
+.live { display: flex; flex-direction: column; gap: 4px; animation: pop .25s ease; }
+.trk { font-size: 13.5px; font-weight: 700; padding: 5px 9px; border-radius: 8px; background: rgba(250, 204, 21, .12); color: var(--do); border-left: 3px solid var(--do); transition: background .3s, color .3s; }
+.trk.ok { background: rgba(74, 222, 128, .12); color: var(--ok); border-left-color: var(--ok); }
+.tip { font-size: 12.5px; padding: 7px 10px; border-radius: 10px; background: rgba(125, 211, 252, .1); border: 1px solid rgba(125, 211, 252, .35); }
+.tip .tt { font-size: 10px; font-weight: 800; letter-spacing: 1.1px; color: var(--say); text-transform: uppercase; margin-bottom: 2px; }
+.tip .ts { margin-top: 5px; font-weight: 700; color: var(--say); cursor: pointer; user-select: text; }
+.tip .ts.copied::after { content: "  copied"; font-weight: 500; color: var(--muted); font-size: 11px; }
+body.callsMode .live { display: none; }
