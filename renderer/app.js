@@ -294,9 +294,18 @@ pollFlight();
 setInterval(() => { pollFlight().then(() => { updatePhase(); renderLive(); renderCalls(); }); }, 3000); // the radar's feed updates every ~3 s
 
 // ---- live targets and what to do next ------------------------------------------------
+let phaseStart = { at: Date.now(), pos: null };
+function setPhase(p) {
+  if (p === S.phase) return;
+  S.phase = p;
+  phaseStart = { at: Date.now(), pos: S.flight?.position ? { ...S.flight.position } : null };
+}
 function updatePhase() {
   const before = S.phase;
-  S.phase = nextPhase(S.phase, null, S.flight, S.recent);
+  const pos = S.flight?.position;
+  const moved = pos && phaseStart.pos ? Math.hypot(pos.x - phaseStart.pos.x, pos.y - phaseStart.pos.y) : 0;
+  if (pos && !phaseStart.pos) phaseStart.pos = { ...pos };
+  setPhase(nextPhase(S.phase, null, S.flight, S.recent, { moved, secs: (Date.now() - phaseStart.at) / 1000 }));
   // Just landed: jump to the ATC view so the "what now" shows up.
   if (before === "airborne" && S.phase === "landing" && document.body.classList.contains("callsMode")) document.querySelector('#tabs button[data-tab="atc"]').click();
 }
@@ -307,13 +316,15 @@ function renderLive() {
   const lastTaxi = [...S.recent].reverse().find((i) => i.type === "taxi");
   const tip = phaseTip(S.phase, S.flight, { callsign: sayCallsign(), runway: landRwy, gate: lastTaxi?.gate || null, route: lastTaxi?.route || [], freeGate: freeGate() });
   const html = lines.map((l) => `<div class="trk ${l.done ? "ok" : l.kind}">${esc(l.text)}</div>`).join("")
-    + (tip ? `<div class="tip"><div class="tt">${esc(tip.title)}</div><div>${esc(tip.text)}</div>${tip.say ? `<div class="ts" title="Click to copy">SAY: ${esc(tip.say)}</div>` : ""}</div>` : "");
+    + (tip ? `<div class="tip"><div class="tt">${esc(tip.title)}${tip.button ? `<button class="tipbtn" data-act="${tip.button}">✓ Called</button>` : ""}</div><div>${esc(tip.text)}</div>${tip.say ? `<div class="ts" title="Click to copy">SAY: ${esc(tip.say)}</div>` : ""}</div>` : "");
   if (html === lastLive) return;
   lastLive = html;
   $("live").innerHTML = html;
   $("live").hidden = !html;
 }
 $("live").addEventListener("click", (e) => {
+  // "✓ Called": you made the call, now wait for ATC's route.
+  if (e.target.closest(".tipbtn")) { setPhase("called"); lastLive = ""; renderLive(); return; }
   const ts = e.target.closest(".ts"); if (!ts) return;
   navigator.clipboard.writeText(ts.textContent.replace(/^SAY: /, "")).then(() => { ts.classList.add("copied"); setTimeout(() => ts.classList.remove("copied"), 1200); });
 });

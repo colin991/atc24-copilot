@@ -61,19 +61,26 @@ export function track(t, flight) {
 
 // ---- flight phases --------------------------------------------------------------
 // parked -> taxiing -> airborne -> landing (rolling out) -> vacated -> taxiing in -> parked
-export function nextPhase(phase, prev, flight, recent = []) {
+// ctx.moved = studs moved since this phase started, ctx.secs = seconds in it.
+// ATC's taxi reply can be missed (no callsign, mishearing), so moving off a
+// good distance also counts as "you got your route".
+export function nextPhase(phase, prev, flight, recent = [], { moved = 0, secs = 0 } = {}) {
   if (!flight) return phase || "unknown";
   const gs = flight.groundSpeed || 0;
   if (!flight.isOnGround) return "airborne";
+  const gotTaxi = recent.length && recent[recent.length - 1].type === "taxi";
   if (phase === "airborne") return "landing";                       // just touched down
   if (phase === "landing") return gs < 35 ? "vacate" : "landing";   // slowed right down
   if (phase === "vacate") {
-    if (recent.length && recent[recent.length - 1].type === "taxi") return "taxiin";
-    return gs > 3 && gs < 35 ? "vacate" : gs <= 3 ? "stopped" : "vacate";
+    if (gotTaxi || moved > 700) return "taxiin";
+    return gs <= 3 ? "stopped" : "vacate";
   }
-  if (phase === "stopped") return recent.length && recent[recent.length - 1].type === "taxi" ? "taxiin" : gs > 3 ? "vacate" : "stopped";
-  if (phase === "taxiin") return gs <= 1 ? "parkedin" : "taxiin";
-  if (phase === "parkedin") return gs > 3 ? "taxiin" : "parkedin";
+  if (phase === "stopped" || phase === "called") {
+    if (gotTaxi || (gs > 3 && moved > 150)) return "taxiin";
+    return phase;
+  }
+  if (phase === "taxiin") return gs <= 1 && secs > 20 ? "parkedin" : "taxiin";
+  if (phase === "parkedin") return gs > 3 ? "taxiin" : secs > 60 ? "parked" : "parkedin";
   return gs > 2 ? "taxiing" : "parked";
 }
 
@@ -87,9 +94,11 @@ export function phaseTip(phase, flight, { callsign = "", runway = null, gate = n
     case "landing":
       return { title: "Landed", text: `Brake and slow to taxi speed. Turn off ${rwy} at the next exit; don't stop on it.` };
     case "vacate":
-      return { title: "Clear the runway", text: `Keep going until you're past the yellow hold-short line, then STOP and call for taxi.${freeNote}`, say: `${cs} clear of ${rwy}, requesting taxi pattern to ${askGate}.` };
+      return { button: "called", title: "Clear the runway", text: `Keep going until you're past the yellow hold-short line, then STOP and call for taxi.${freeNote}`, say: `${cs} clear of ${rwy}, requesting taxi pattern to ${askGate}.` };
     case "stopped":
-      return { title: "Request taxi", text: `You're stopped. Ask ATC for taxi to the gate, then wait for the route.${freeNote}`, say: `${cs} requesting taxi pattern to ${askGate}.` };
+      return { button: "called", title: "Request taxi", text: `You're stopped. Ask ATC for taxi to the gate, then wait for the route.${freeNote}`, say: `${cs} requesting taxi pattern to ${askGate}.` };
+    case "called":
+      return { title: "Waiting for taxi", text: "Called. Wait for ATC's taxi route; it'll show here when they give it. If they don't answer in ~30 s, call again." };
     case "taxiin":
       return {
         title: gate ? `Taxi to ${gate}` : "Taxi to the gate",

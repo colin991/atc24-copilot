@@ -38,3 +38,15 @@ test("landing walks you through vacating and asking for taxi", () => {
   p = nextPhase(p, null, air({ isOnGround: true, groundSpeed: 0 }), [{ type: "taxi" }]);
   assert.equal(p, "taxiin");
 });
+
+test("after landing it moves on even if ATC's taxi reply was missed", () => {
+  const g = (o) => ({ heading: 0, altitude: 10, isOnGround: true, groundSpeed: 8, ...o });
+  // Rolling slowly off the runway a long way without stopping -> taxiing in.
+  assert.equal(nextPhase("vacate", null, g({}), [], { moved: 800 }), "taxiin");
+  // Stopped, then moving off -> you got your route.
+  assert.equal(nextPhase("stopped", null, g({ groundSpeed: 10 }), [], { moved: 200 }), "taxiin");
+  // "Called" waits for the route.
+  assert.equal(nextPhase("called", null, g({ groundSpeed: 0 }), [], { moved: 0 }), "called");
+  assert.equal(nextPhase("called", null, g({ groundSpeed: 0 }), [{ type: "taxi" }]), "taxiin");
+  assert.equal(phaseTip("called", null, {}).title, "Waiting for taxi");
+});
