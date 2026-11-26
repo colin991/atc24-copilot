@@ -51,7 +51,8 @@ const DIGIT_WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seve
 
 // Phonetic words as speech-to-text mangles them ("pop a limo" = papa lima).
 const PHONETIC_SOUNDS = [
-  [/\bpop+ ?a\b/g, "papa"], [/\blimo\b|\blee ?ma\b/g, "lima"], [/\bal ?fa\b/g, "alpha"], [/\bcharley\b/g, "charlie"],
+  [/\bpop ?alima\b/g, "papa lima"], [/\b[a-z]{1,3}lima\b/g, "lima"],
+  [/\bpop+ ?a\b|\bproper\b|\bpopper\b|\bpapa?\b/g, "papa"], [/\blimo\b|\blee ?ma\b|\blemma\b|\blemur\b|\blimer\b/g, "lima"], [/\bal ?fa\b/g, "alpha"], [/\bcharley\b/g, "charlie"],
   [/\bjuliette?\b/g, "juliet"], [/\bkey ?low\b/g, "kilo"], [/\bmic\b/g, "mike"], [/\bwhisk(?:e)?y\b/g, "whiskey"],
   [/\bx ?ray\b/g, "xray"], [/\byankie\b/g, "yankee"], [/\bsierra\b|\bciera\b/g, "sierra"], [/\bvictory\b/g, "victor"],
 ];

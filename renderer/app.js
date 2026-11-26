@@ -151,6 +151,11 @@ function onText(text) {
     if (last.result?.forMe && alone.forMe !== true && !alone.to && !alone.unknown) {
       undo(last.result);
       text = `${last.text} , ${text}`;
+    } else if (alone.forMe === true && !last.result?.forMe && last.result?.instruction) {
+      // Callsign at the END: "fly heading 025" ... "25, apologies, November
+      // 522 Papa Lima". The instruction before belongs to this call.
+      undo(last.result);
+      text = `${last.text} , ${text}`;
     }
   }
   const result = handle(text, !!(last && text.startsWith(last.text)));
@@ -170,19 +175,20 @@ function handle(text, joined = false) {
   // Misheard versions of your callsign you taught it (by tapping a grey line).
   if (r.forMe !== true && !r.to && matchesLearned(r.heard, learned)) r.forMe = true;
   if (r.forMe === true) S.lastMineAt = Date.now();
+  if (r.forMe === true && r.unknown) applyCorrection(r);
   console.log(`[call] forMe=${r.forMe} to=${r.to || ""} unknown=${r.unknown} readback=${JSON.stringify(r.readback)} heard=${JSON.stringify(r.heard)}`);
   // Only a call with YOUR callsign gets the big DO / SAY card. Calls for
   // someone else, or where no callsign was heard, go in the list below,
   // greyed out, and never get a readback with your callsign on it.
   if (r.forMe !== true) {
-    return { el: S.onlyMe ? null : addOther(r), pushed: 0, forMe: false };
+    return { el: S.onlyMe ? null : addOther(r), pushed: 0, forMe: false, instruction: !r.unknown && !r.to };
   }
   showNow(r, joined);
   let pushed = 0;
   if (!r.unknown) {
     // A new clearance starts a new flight.
     if (r.items.some((i) => i.type === "clearance")) S.recent = [];
-    S.recent.push(...r.items);
+    S.recent.push(...r.items.map((i) => ({ ...i, at: Date.now() })));
     pushed = r.items.length;
     S.recent = S.recent.slice(-30);
     renderCalls();
@@ -349,11 +355,11 @@ function updatePhase() {
 }
 let lastLive = "";
 function renderLive() {
-  const lines = track(targets(S.recent), S.flight);
+  const lines = track(targets(freshRecent()), S.flight);
   const landRwy = [...S.recent].reverse().find((i) => i.type === "land" || i.type === "approach")?.runway || null;
   const lastTaxi = [...S.recent].reverse().find((i) => i.type === "taxi");
   const tip = phaseTip(S.phase, S.flight, { callsign: sayCallsign(), runway: landRwy, gate: lastTaxi?.gate || null, route: lastTaxi?.route || [], freeGate: freeGate() });
-  const html = lines.map((l) => `<div class="trk ${l.done ? "ok" : l.kind}">${esc(l.text)}</div>`).join("")
+  const html = lines.map((l) => `<div class="trk ${l.done ? "ok" : l.kind}" data-kind="${l.kind}" title="Tap to hide">${esc(l.text)}</div>`).join("")
     + (tip ? `<div class="tip"><div class="tt">${esc(tip.title)}${tip.button ? `<button class="tipbtn" data-act="${tip.button}">✓ Called</button>` : ""}</div><div>${esc(tip.text)}</div>${tip.say ? `<div class="ts" title="Click to copy">SAY: ${esc(tip.say)}</div>` : ""}</div>` : "");
   if (html === lastLive) return;
   lastLive = html;
@@ -473,8 +479,42 @@ $("history").addEventListener("click", (e) => {
   el.remove();
   S.lastMineAt = Date.now();
   showNow(r);
-  S.recent.push(...r.items); S.recent = S.recent.slice(-30);
+  S.recent.push(...r.items.map((i) => ({ ...i, at: Date.now() }))); S.recent = S.recent.slice(-30);
   renderCalls(); renderLive();
   status(sounds.length ? `Got it, that was yours. Next time "${sounds.join(" ")}" counts as your callsign.` : "Got it, that was yours.");
   setTimeout(() => status(""), 6000);
+});
+
+// ---- corrections -------------------------------------------------------------------
+// "25, apologies" / "correction, 5000": a number with a correction word updates
+// the last heading, altitude or speed ATC gave you (whichever fits the number).
+function applyCorrection(r) {
+  if (!/\b(?:correction|apologies|apology|sorry|i mean|my bad)\b/.test(r.heard)) return;
+  const mine = (myCallsign() + " " + aliases().join(" ")).replace(/\D+/g, " ").split(" ").filter(Boolean);
+  const n = (r.heard.match(/\b\d{2,5}\b/g) || []).map(Number).find((x) => !mine.includes(String(x)));
+  if (n == null) return;
+  const lastOf = (t) => [...S.recent].reverse().find((i) => i.type === t);
+  const cands = [lastOf("heading"), lastOf("altitude"), lastOf("speed")].filter(Boolean).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const pad = (h) => String(h).padStart(3, "0");
+  let item = null;
+  for (const c of cands) {
+    if (c.type === "heading" && n >= 1 && n <= 360) { item = { type: "heading", heading: n, dir: null, do: `Correction: turn to heading ${pad(n)}.`, say: `heading ${pad(n)}` }; break; }
+    if (c.type === "altitude" && (n >= 500 || n < 100)) { const ft = n < 100 ? n * 100 : n; item = { type: "altitude", ft, do: `Correction: altitude ${ft.toLocaleString("en-US")} ft.`, say: `maintain ${ft}` }; break; }
+    if (c.type === "speed" && n >= 100 && n <= 400) { item = { type: "speed", kt: n, do: `Correction: speed ${n} knots.`, say: `speed ${n}` }; break; }
+  }
+  if (!item) return;
+  r.items = [item]; r.unknown = false;
+  r.readback = `${item.say.charAt(0).toUpperCase()}${item.say.slice(1)}, ${spokenCallsign(sayCallsign())}`;
+}
+
+// ---- live targets: expire and dismiss -------------------------------------------------
+const TARGET_MS = 5 * 60 * 1000;
+const dismissed = {};
+function freshRecent() {
+  const now = Date.now();
+  return S.recent.filter((i) => !i.at || (now - i.at < TARGET_MS && !(dismissed[i.type] >= i.at)));
+}
+$("live").addEventListener("click", (e) => {
+  const t = e.target.closest(".trk"); if (!t) return;
+  dismissed[t.dataset.kind] = Date.now(); lastLive = ""; renderLive();
 });

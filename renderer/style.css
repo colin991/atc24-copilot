@@ -125,3 +125,5 @@ body.callsMode .live { display: none; }
 .past.other { cursor: pointer; }
 .past.other:hover { opacity: .9; background: rgba(255,255,255,.04); }
 .past .heardline { font-size: 10.5px; color: var(--muted); font-style: italic; margin-top: 1px; }
+
+.trk { cursor: pointer; }
