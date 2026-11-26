@@ -26,7 +26,11 @@ export function normalize(raw) {
     .replace(/[^a-z0-9.,\s-]/g, " ")
     .replace(/-/g, " ")
     .replace(/\.(?!\d)/g, " , ")
+    // Words glued to numbers by speech-to-text: "jipblue29" -> "jipblue 29"
+    .replace(/\b([a-z]{3,})(\d{2,4})\b/g, "$1 $2")
     .replace(/\s+/g, " ");
+  // Common mishearings of radio words.
+  for (const [wrong, right] of MISHEARD) s = s.replace(wrong, right);
   const words = s.trim().split(" ");
   const out = [];
   for (let i = 0; i < words.length; i++) {
@@ -82,6 +86,19 @@ export function normalize(raw) {
   t = joinTaxiways(t);
   return t.replace(/(\s*,\s*)+$/, "").trim();
 }
+
+// What speech-to-text writes instead of radio words.
+const MISHEARD = [
+  [/\bclimate\b/g, "climb and"],
+  [/\bclimb in maintain\b/g, "climb and maintain"],
+  [/\bdecent\b/g, "descend"],
+  [/\bdescent and\b/g, "descend and"],
+  [/\bsquak\b|\bsquock\b|\bsquad\b(?= \d)/g, "squawk"],
+  [/\bhold\s+shorts?\b/g, "hold short"],
+  [/\bline up in wait\b|\bline up and weight\b/g, "line up and wait"],
+  [/\bclear(?:ed)? for take ?off\b/g, "cleared for takeoff"],
+  [/\bheading\s+(\d)\s+(\d)\s+(\d)\b/g, "heading $1$2$3"],
+];
 
 // Letter names as speech-to-text writes them ("kay five" = K5).
 const LETTER_NAMES = {

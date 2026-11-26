@@ -15,33 +15,53 @@ import { normalize, PHONETIC } from "./words.js";
 const AIRLINE_WORDS = new Set(["speedbird", "shamrock", "lufthansa", "delta", "united", "american", "emirates", "qatar", "ryanair", "easy", "easyjet", "jetbloo", "jetblue", "oldzealand", "warlock", "supertransport", "reunited", "worldstar", "cessna", "november"]);
 
 // --- callsigns -----------------------------------------------------------
-// "Speedbird-208" -> { name: "speedbird", num: "208" }
+// "Speedbird-208" -> { name: "speedbird", num: "208", suffix: "" }
+// "JetBlue 29W"   -> { name: "jetblue",   num: "29",  suffix: "w" }
 export function splitCallsign(cs) {
-  const s = String(cs || "").toLowerCase().replace(/[-_]/g, " ");
+  const s = String(cs || "").toLowerCase().replace(/[-_]/g, " ").replace(/([a-z])(\d)/g, "$1 $2").replace(/(\d)([a-z])/g, "$1 $2");
+  const words = s.split(/\s+/).filter(Boolean);
+  const firstNum = words.findIndex((w) => /^\d+$/.test(w));
+  const name = (firstNum > 0 ? words.slice(0, firstNum) : words.filter((w) => !/\d/.test(w)).slice(0, 1)).join("");
   const num = (s.match(/\d+/g) || []).join("");
-  const name = s.replace(/\d+/g, " ").trim().split(/\s+/)[0] || "";
-  return { name, num };
+  const after = firstNum >= 0 ? words.slice(firstNum + 1).filter((w) => !/\d/.test(w)) : [];
+  const suffix = after.map((w) => (PHONETIC[w] ? PHONETIC[w].toLowerCase() : w)).filter((w) => /^[a-z]$/.test(w)).join("");
+  // The name as a pattern that allows spaces between its words ("sky orenji").
+  const nameRe = name.split("").join("\\s?");
+  return { name, num, suffix, nameRe };
 }
 
-// Readback style: "Speedbird 208"
+const PHONETIC_WORD = Object.fromEntries(Object.entries(PHONETIC).filter(([w]) => !["alfa", "juliett", "whisky"].includes(w)).map(([w, l]) => [l.toLowerCase(), w]));
+
+// Readback style: "Speedbird 208", "Jetblue 29 Whiskey"
 export function spokenCallsign(cs) {
-  const { name, num } = splitCallsign(cs);
+  const { name, num, suffix } = splitCallsign(cs);
   if (!name && !num) return "";
-  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${num}`.trim();
+  const letters = suffix.split("").filter(Boolean).map((l) => cap(PHONETIC_WORD[l] || l.toUpperCase()));
+  return [cap(name), num, ...letters].filter(Boolean).join(" ");
 }
 
-function addressee(text, me) {
-  // Callsign is normally first: "speedbird 208 , turn left ..."
-  const head = text.split(" , ")[0].split(" ").slice(0, 4).join(" ");
+// Is this call for one of my callsigns? Returns which one ATC used.
+function addressee(text, mes) {
+  // Callsign is normally first: "speedbird 208 , turn left ...", after any
+  // filler ("copy , jetblue 29 whiskey , ...", "correction , ...").
+  const parts = text.split(" , ");
+  while (parts.length > 1 && /^(?:copy|roger|okay|ok|correction|uh|um|er|and|so|alright|right|affirm|affirmative|negative|sorry|my bad|disregard)(?: that)?$/.test(parts[0].trim())) parts.shift();
+  const head = parts[0].split(" ").slice(0, 5).join(" ");
   const nums = head.match(/\b\d{2,5}\b/g) || [];
-  if (!me.num) return { forMe: null, said: null };
-  if (nums.includes(me.num)) return { forMe: true, said: head };
-  // Number split up by speech-to-text: "jet blue 30 32" -> 3032
-  const joined = (head.match(/\b\d{1,4}\b/g) || []).join("");
-  if (me.num.length >= 3 && joined.includes(me.num)) return { forMe: true, said: head };
-  // Anywhere else (e.g. "turn left heading 270 speedbird 208")
-  if (new RegExp(`\\b${me.name}\\s*${me.num}\\b`).test(text) || new RegExp(`\\b${me.num}\\b`).test(text.split(" , ").pop())) return { forMe: true, said: null };
-  // Someone else's callsign up front: a word we know as an airline + a number
+  const tail = text.split(" , ").pop();
+  for (const me of mes) {
+    if (!me.num) continue;
+    // A letter suffix ("29 whiskey") must be heard too; short numbers also need the name.
+    const sfx = me.suffix ? new RegExp(`\\b${me.num}\\s*(?:${me.suffix.split("").map((l) => `${l}|${PHONETIC_WORD[l] || l}`).join("|")})\\b`) : null;
+    const short = me.num.length < 3;
+    const ok = (s) => (sfx ? sfx.test(s) : short ? new RegExp(`\\b${me.nameRe}\\s*${me.num}\\b`).test(s) : new RegExp(`\\b${me.num}\\b`).test(s));
+    if (ok(head) || ok(tail)) return { forMe: true, said: head, me };
+    // Number split up by speech-to-text: "jet blue 30 32" -> 3032
+    const joined = (head.match(/\b\d{1,4}\b/g) || []).join("");
+    if (!sfx && me.num.length >= 3 && joined.includes(me.num)) return { forMe: true, said: head, me };
+    if (new RegExp(`\\b${me.nameRe}\\s*${me.num}\\b`).test(text)) return { forMe: true, said: null, me };
+  }
+  // Someone else's callsign up front: a word + a number
   const first = head.split(" ");
   if (nums.length && (AIRLINE_WORDS.has(first[0]) || /^[a-z]+$/.test(first[0])) && /^\d{2,5}$/.test(first[1] || "")) return { forMe: false, said: head };
   return { forMe: null, said: null };
@@ -68,6 +88,9 @@ const TWY_WORD = new RegExp(`^(?:(?:${Object.keys(PHONETIC).join("|")})(?: [0-9]
 function parseAlt(s) {
   let m = /\bfl(\d{2,3})\b/.exec(s);
   if (m) return { fl: m[1], ft: +m[1] * 100 };
+  // "030" / "050": hundreds of feet, the way ATC says low altitudes.
+  m = /\b(0\d{2})\b/.exec(s);
+  if (m && +m[1] >= 5) return { ft: +m[1] * 100 };
   m = /\b(\d{3,5})\b\s*(?:feet|ft)?/.exec(s);
   if (m && +m[1] >= 500 && +m[1] <= 45000 && +m[1] % 100 === 0) return { ft: +m[1] };
   return null;
@@ -316,10 +339,12 @@ function clauses(text) {
   return out;
 }
 
-export function understand(transcript, { callsign = "", flight = null } = {}) {
+export function understand(transcript, { callsign = "", aliases = [], flight = null } = {}) {
   const heard = normalize(transcript);
-  const me = splitCallsign(callsign);
-  const addr = addressee(heard, me);
+  // Every name you go by: in-game callsign, the one in your flight plan, and
+  // whatever you told the app ATC calls you.
+  const mes = [callsign, ...aliases].filter(Boolean).map((raw) => ({ raw, ...splitCallsign(raw) })).filter((m) => m.num);
+  const addr = addressee(heard, mes);
   const ctx = { flight, consumedAll: false };
   const items = [];
   for (const c of clauses(heard)) {
@@ -333,7 +358,8 @@ export function understand(transcript, { callsign = "", flight = null } = {}) {
   const seen = new Set();
   const uniq = items.filter((i) => { const k = i.type + i.say; if (seen.has(k)) return false; seen.add(k); return true; });
   const says = uniq.map((i) => i.say).filter(Boolean);
-  const cs = spokenCallsign(callsign);
+  // Read back with the callsign ATC used (else the one you said ATC calls you).
+  const cs = spokenCallsign(addr.me ? addr.me.raw : (aliases.find(Boolean) || callsign));
   let readback = "";
   if (says.length) readback = `${cap(says.join(", "))}${cs ? `, ${cs}` : ""}`;
   else if (uniq.length) readback = cs ? `Roger, ${cs}` : "Roger";

@@ -15,6 +15,8 @@ const app = window.copilot || {
 // ---- settings ---------------------------------------------------------------
 const S = {
   callsign: localStorage.getItem("callsign") || "",
+  atcCs: localStorage.getItem("atcCs") || "",
+  sttQuality: localStorage.getItem("sttQuality") || "accurate",
   server: localStorage.getItem("server") || "main",
   source: localStorage.getItem("source") || "system",
   sens: +(localStorage.getItem("sens") || 3),
@@ -56,6 +58,11 @@ function renderFlight() {
   else $("flight").innerHTML = `<b>${esc(S.flightCs)}</b> · ${esc(f.aircraftType || "")} · ${f.isOnGround ? "on ground" : `${Math.round(f.altitude).toLocaleString()} ft`} · HDG ${String(Math.round(f.heading)).padStart(3, "0")} · ${Math.round(f.groundSpeed || 0)} kt`;
 }
 const myCallsign = () => S.flightCs || S.callsign;
+// Other names ATC may use: what you typed in settings, and the callsign
+// filed in your flight plan (e.g. "JetBlue 29W" for in-game "JetBloo-3032").
+const aliases = () => [S.atcCs, S.plan?.filed].filter((x) => x && x.trim());
+// The callsign for readbacks and your own calls: the one ATC uses.
+const sayCallsign = () => aliases()[0] || myCallsign();
 
 // ---- speech to text ------------------------------------------------------------
 let worker = null, workerReady = false, nextId = 1;
@@ -65,13 +72,13 @@ function localWhisper(wav) {
     worker = new Worker(new URL("./whisper-worker.js", import.meta.url), { type: "module" });
     worker.onmessage = (e) => {
       const m = e.data;
-      if (m.status === "loading") setStt("built-in (downloading model, one time)…");
-      if (m.status === "ready") { workerReady = true; setStt("built-in (on this PC)"); }
+      if (m.status === "loading") setStt("built-in (loading speech model, first time downloads it)…");
+      if (m.status === "ready") { workerReady = true; setStt(`built-in (${m.device === "gpu" ? "graphics card" : "CPU"}, ${m.quality})`); }
       if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
     };
   }
   const id = nextId++;
-  return new Promise((resolve) => { pending.set(id, resolve); worker.postMessage({ id, audio: wavToFloat(wav) }); });
+  return new Promise((resolve) => { pending.set(id, resolve); worker.postMessage({ id, audio: wavToFloat(wav), quality: S.sttQuality }); });
 }
 function setStt(text) { $("sttMode").textContent = text; $("mode").textContent = /fast/.test(text) ? "fast" : /built-in/.test(text) ? "local" : ""; }
 
@@ -99,7 +106,7 @@ async function onClip(wav) {
 }
 
 function handle(text) {
-  const r = understand(text, { callsign: myCallsign(), flight: S.flight });
+  const r = understand(text, { callsign: myCallsign(), aliases: aliases(), flight: S.flight });
   // Only a call with YOUR callsign gets the big DO / SAY card. Calls for
   // someone else, or where no callsign was heard, go in the list below,
   // greyed out, and never get a readback with your callsign on it.
@@ -189,6 +196,10 @@ async function fillSources() {
 }
 function bindSettings() {
   $("callsign").value = S.callsign;
+  $("atcCs").value = S.atcCs;
+  $("sttQuality").value = S.sttQuality;
+  $("sttQuality").addEventListener("change", (e) => { save("sttQuality", e.target.value); if (!S.fast) warmUp(); });
+  $("atcCs").addEventListener("change", (e) => { save("atcCs", e.target.value.trim()); renderCalls(); showAtcHint(); });
   $("callsign").addEventListener("change", (e) => { save("callsign", e.target.value.trim()); pollFlight(); });
   $("server").value = S.server;
   $("server").addEventListener("change", (e) => { save("server", e.target.value); pollFlight(); });
@@ -241,7 +252,10 @@ $("updBtn").onclick = async () => {
 app.on("update-status", showUpdate);
 app.updateStatus().then(showUpdate);
 window.__showUpdate = showUpdate; // for checking the panel
-app.sttStatus().then((s) => { S.fast = !!s.fast; setStt(S.fast ? "fast (online)" : "built-in (on this PC)"); });
+// Load the built-in speech model straight away (it takes a few seconds), so
+// the first real call isn't slow.
+const warmUp = () => localWhisper(new Uint8Array(44 + 16000 * 2).buffer.slice(0)).catch(() => {});
+app.sttStatus().then((s) => { S.fast = !!s.fast; setStt(S.fast ? "fast (online)" : "built-in (loading…)"); if (!S.fast) warmUp(); });
 pollFlight();
 setInterval(() => { pollFlight().then(renderCalls); }, 3000); // the radar's feed updates every ~3 s
 
@@ -250,8 +264,12 @@ async function pollPlan() {
   const q = S.flightCs || S.callsign.trim();
   if (!q) return;
   const p = await app.plan(q);
-  if (p && (!S.plan || p.departing !== S.plan.departing || p.arriving !== S.plan.arriving)) S.plan = p;
+  if (p && (!S.plan || p.departing !== S.plan.departing || p.arriving !== S.plan.arriving || p.filed !== S.plan.filed)) { S.plan = p; showAtcHint(); }
   renderCalls();
+}
+function showAtcHint() {
+  const filed = S.plan?.filed;
+  $("atcCsHint").textContent = filed && filed.toLowerCase() !== (S.flightCs || "").toLowerCase() ? `Your flight plan says "${filed}", so that counts too.` : "";
 }
 async function pollAtis() { const a = await app.atis(); if (Array.isArray(a)) S.atis = a; renderCalls(); }
 app.airports().then((a) => { if (a) S.airports = a; renderCalls(); });
@@ -260,7 +278,7 @@ pollAtis(); setInterval(pollAtis, 30000);
 
 let lastCalls = "";
 function renderCalls() {
-  const { calls, next, where } = buildCalls({ callsign: myCallsign(), flight: S.flight, plan: S.plan, atis: S.atis, airports: S.airports, recent: S.recent });
+  const { calls, next, where } = buildCalls({ callsign: sayCallsign(), flight: S.flight, plan: S.plan, atis: S.atis, airports: S.airports, recent: S.recent });
   const html = calls.map((c) => `<div class="call${c.id === next ? " next" : ""}" data-id="${c.id}">
       <div class="t">${esc(c.title)}</div>
       <div class="x">${esc(c.text).replace(/\[([^\]]+)\]/g, "<i>[$1]</i>")}</div>

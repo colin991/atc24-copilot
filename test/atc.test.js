@@ -110,3 +110,11 @@ test("no callsign heard is never treated as for me", () => {
 test("a callsign number split up by speech-to-text still counts", () => {
   assert.equal(understand("jet blue 30 32, climb and maintain 5000", { callsign: "Jetbloo-3032" }).forMe, true);
 });
+
+test("the callsign ATC uses from your flight plan (JetBlue 29W) counts as you", () => {
+  const r = understand("copy, jipblue29 whiskey, turn right heading 360, climate maintain 030", { callsign: "JetBloo-3032", aliases: ["JetBlue 29W"] });
+  assert.equal(r.forMe, true);
+  assert.equal(r.readback, "Right heading 360, climb and maintain 3000, Jetblue 29 Whiskey");
+  // Another pilot's 29 without your letter isn't you.
+  assert.notEqual(understand("Shamrock 29, climb and maintain 5000", { callsign: "JetBloo-3032", aliases: ["JetBlue 29W"] }).forMe, true);
+});

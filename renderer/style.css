@@ -100,3 +100,4 @@ body.callsMode #now, body.callsMode #history { display: none; }
 .drawer::-webkit-scrollbar { display: none; }
 .past.other { opacity: .6; font-style: italic; }
 .past.other b { font-style: normal; }
+.drawer .sub { font-size: 10.5px; color: var(--muted); }
