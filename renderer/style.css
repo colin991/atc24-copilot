@@ -85,3 +85,16 @@ body.callsMode #now, body.callsMode #history { display: none; }
 .drawer input[type="range"] { accent-color: var(--do); }
 .hint { font-size: 10.5px; color: var(--muted); margin: 0; }
 .hint b { color: var(--text); }
+
+.updates { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); background: rgba(255,255,255,.05); border-radius: 8px; padding: 6px 8px; }
+.updates b { color: var(--text); }
+.updates span { flex: 1; }
+.updates .ok { color: var(--ok); }
+.updates .busy { color: var(--do); }
+.updates .bad { color: var(--bad); }
+.updates button { background: rgba(255,255,255,.12); color: var(--text); border: 1px solid var(--edge); border-radius: 7px; padding: 4px 9px; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.updates button:hover { background: rgba(255,255,255,.2); }
+.updates button.go { background: var(--do); color: #1b1b1b; border-color: transparent; }
+.updates button:disabled { opacity: .5; cursor: default; }
+.drawer { scrollbar-width: none; }
+.drawer::-webkit-scrollbar { display: none; }

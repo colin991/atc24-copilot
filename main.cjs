@@ -101,14 +101,27 @@ app.whenReady().then(() => {
   globalShortcut.register("CommandOrControl+Shift+P", () => win?.webContents.send("toggle-listen"));
 
   // Updates from GitHub Releases (installed copies update themselves).
+  // The page is told every step so the settings panel can show it.
+  let status = { state: app.isPackaged ? "idle" : "dev", version: VERSION };
+  const tell = (s) => { status = { ...status, ...s }; win?.webContents.send("update-status", status); };
+  ipcMain.handle("update-status", () => status);
   try {
     const { autoUpdater } = require("electron-updater");
     autoUpdater.autoDownload = true;
-    autoUpdater.on("update-downloaded", (info) => win?.webContents.send("update-ready", info.version));
-    const check = () => autoUpdater.checkForUpdates().catch(() => {});
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.on("checking-for-update", () => tell({ state: "checking" }));
+    autoUpdater.on("update-not-available", () => tell({ state: "latest", checkedAt: Date.now() }));
+    autoUpdater.on("update-available", (info) => tell({ state: "downloading", next: info.version, percent: 0 }));
+    autoUpdater.on("download-progress", (p) => tell({ state: "downloading", percent: Math.round(p.percent || 0) }));
+    autoUpdater.on("update-downloaded", (info) => { tell({ state: "ready", next: info.version }); win?.webContents.send("update-ready", info.version); });
+    autoUpdater.on("error", (e) => tell({ state: "error", error: String(e?.message || e).slice(0, 120) }));
+    const check = () => { if (status.state === "downloading" || status.state === "ready") return; autoUpdater.checkForUpdates().catch(() => {}); };
     if (app.isPackaged) { check(); setInterval(check, 30 * 60 * 1000); }
-    ipcMain.on("install-update", () => autoUpdater.quitAndInstall());
-  } catch {}
+    ipcMain.handle("check-update", () => { if (!app.isPackaged) return status; check(); return status; });
+    ipcMain.on("install-update", () => autoUpdater.quitAndInstall(true, true)); // silent, then reopen
+  } catch {
+    ipcMain.handle("check-update", () => status);
+  }
 });
 
 app.on("window-all-closed", () => app.quit());

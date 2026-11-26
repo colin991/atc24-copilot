@@ -13,7 +13,9 @@ contextBridge.exposeInMainWorld("copilot", {
   minimize: () => ipcRenderer.send("minimize"),
   quit: () => ipcRenderer.send("quit"),
   installUpdate: () => ipcRenderer.send("install-update"),
+  checkUpdate: () => ipcRenderer.invoke("check-update"),
+  updateStatus: () => ipcRenderer.invoke("update-status"),
   on: (event, fn) => {
-    if (["click-through", "toggle-listen", "update-ready"].includes(event)) ipcRenderer.on(event, (_e, v) => fn(v));
+    if (["click-through", "toggle-listen", "update-ready", "update-status"].includes(event)) ipcRenderer.on(event, (_e, v) => fn(v));
   },
 });

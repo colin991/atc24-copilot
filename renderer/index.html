@@ -46,6 +46,10 @@
     <div id="update" class="update" hidden>Update ready · <a href="#" id="installUpdate">restart to install</a></div>
 
     <section id="settings" class="drawer" hidden>
+      <div class="updates">
+        <span id="updText">Version <b id="updVer"></b></span>
+        <button id="updBtn" type="button">Check for updates</button>
+      </div>
       <label>Your callsign or Roblox username
         <input id="callsign" placeholder="e.g. Speedbird-208" spellcheck="false" />
       </label>
@@ -67,7 +71,7 @@
       </label>
       <p class="hint">
         <b>Ctrl+Shift+X</b> click through the overlay · <b>Ctrl+Shift+H</b> hide/show · <b>Ctrl+Shift+P</b> pause<br />
-        Speech: <span id="sttMode">checking…</span> · v<span id="ver"></span>
+        Speech: <span id="sttMode">checking…</span>
       </p>
     </section>
   </div>

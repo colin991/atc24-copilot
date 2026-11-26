@@ -9,6 +9,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const app = window.copilot || {
   aircraft: async () => null, atis: async () => null, airports: async () => null, plan: async () => null, sttStatus: async () => ({ fast: false }), transcribe: async () => ({ error: "browser" }),
   version: async () => "dev", setClickThrough() {}, minimize() {}, quit() {}, installUpdate() {}, on() {},
+  checkUpdate: async () => ({ state: "dev", version: "dev" }), updateStatus: async () => ({ state: "dev", version: "dev" }),
 };
 
 // ---- settings ---------------------------------------------------------------
@@ -198,11 +199,33 @@ $("say").onclick = () => {
 $("installUpdate").onclick = (e) => { e.preventDefault(); app.installUpdate(); };
 app.on("click-through", (on) => document.body.classList.toggle("through", on));
 app.on("toggle-listen", () => setListening(!S.listening));
-app.on("update-ready", (v) => { $("update").hidden = false; $("update").firstChild.textContent = `Update ${v} ready · `; });
+app.on("update-ready", (v) => { $("update").hidden = false; $("update").firstChild.textContent = `Update v${v} ready · `; });
 
 // ---- start -----------------------------------------------------------------------
 bindSettings();
-app.version().then((v) => ($("ver").textContent = v));
+// ---- updates -------------------------------------------------------------------
+function showUpdate(u) {
+  if (!u) return;
+  const ver = u.version ? `v${u.version}` : "";
+  const t = $("updText"), b = $("updBtn");
+  b.disabled = false; b.classList.remove("go"); b.textContent = "Check for updates";
+  if (u.state === "checking") { t.innerHTML = `Version <b>${ver}</b> · <span class="busy">checking…</span>`; b.disabled = true; }
+  else if (u.state === "latest") t.innerHTML = `Version <b>${ver}</b> · <span class="ok">up to date ✓</span>`;
+  else if (u.state === "downloading") { t.innerHTML = `Version <b>${ver}</b> · <span class="busy">downloading v${esc(u.next || "")} ${u.percent ? `${u.percent}%` : "…"}</span>`; b.disabled = true; }
+  else if (u.state === "ready") { t.innerHTML = `<span class="busy">v${esc(u.next || "")} is ready</span> (you have ${ver})`; b.textContent = "Restart to update"; b.classList.add("go"); }
+  else if (u.state === "error") t.innerHTML = `Version <b>${ver}</b> · <span class="bad">couldn't check (offline?)</span>`;
+  else if (u.state === "dev") { t.innerHTML = `Version <b>${ver || "dev"}</b> · test build, no updates`; b.disabled = true; }
+  else t.innerHTML = `Version <b>${ver}</b>`;
+  b.dataset.state = u.state;
+}
+$("updBtn").onclick = async () => {
+  if ($("updBtn").dataset.state === "ready") return app.installUpdate();
+  showUpdate({ ...(await app.updateStatus()), state: "checking" });
+  showUpdate(await app.checkUpdate());
+};
+app.on("update-status", showUpdate);
+app.updateStatus().then(showUpdate);
+window.__showUpdate = showUpdate; // for checking the panel
 app.sttStatus().then((s) => { S.fast = !!s.fast; setStt(S.fast ? "fast (online)" : "built-in (on this PC)"); });
 pollFlight();
 setInterval(() => { pollFlight().then(renderCalls); }, 3000); // the radar's feed updates every ~3 s
