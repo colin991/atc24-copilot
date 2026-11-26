@@ -117,3 +117,7 @@ body.callsMode .live { display: none; }
 .tipbtn { margin-left: auto; background: rgba(74, 222, 128, .18); color: var(--ok); border: 1px solid rgba(74, 222, 128, .4); border-radius: 7px; font: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .3px; padding: 2px 8px; cursor: pointer; text-transform: none; }
 .tipbtn:hover { background: rgba(74, 222, 128, .3); }
 #doList li.muted { list-style: none; margin-left: -18px; }
+
+.status { font-size: 11.5px; color: var(--do); background: rgba(250, 204, 21, .1); border-radius: 8px; padding: 5px 8px; animation: pop .25s ease; }
+.status.bad { color: var(--bad); background: rgba(248, 113, 113, .12); }
+.past .chat { font-style: italic; }

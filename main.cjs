@@ -16,7 +16,7 @@ app.commandLine.appendSwitch("enable-features", "SharedArrayBuffer");
 if (process.env.COPILOT_NO_GPU) app.commandLine.appendSwitch("disable-gpu");
 // Test runs from the source folder get their own profile, so they never
 // clash with an installed copy that is already open.
-if (!app.isPackaged) app.setPath("userData", path.join(app.getPath("appData"), "atc24-copilot-dev"));
+if (!app.isPackaged) app.setPath("userData", process.env.COPILOT_PROFILE || path.join(app.getPath("appData"), "atc24-copilot-dev"));
 
 // ---- window position is remembered between runs ---------------------------
 const stateFile = () => path.join(app.getPath("userData"), "window.json");

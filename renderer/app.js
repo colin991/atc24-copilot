@@ -76,8 +76,11 @@ function localWhisper(wav) {
     worker = new Worker(new URL("./whisper-worker.js", import.meta.url), { type: "module" });
     worker.onmessage = (e) => {
       const m = e.data;
-      if (m.status === "loading") setStt("built-in (loading speech model, first time downloads it)…");
-      if (m.status === "ready") { workerReady = true; setStt(`built-in (${m.device === "gpu" ? "graphics card" : "CPU"}, ${m.quality})`); }
+      if (m.status === "loading") { setStt("built-in (loading speech model…)"); status("Loading the speech model…"); }
+      if (m.status === "download") status(m.size === "light" ? `Getting ready: downloading the speech model (${m.mb} of ${m.totalMb} MB)…` : `Listening with the quick model. Downloading the accurate one in the background (one time): ${m.mb} of ~${m.totalMb} MB.`);
+      if (m.status === "ready") { workerReady = true; setStt(`built-in (${m.device === "gpu" ? "graphics card" : "CPU"}, ${m.quality}${m.interim ? ", upgrading…" : ""})`); if (!m.interim) status(""); else status("Listening with the quick model while the accurate one downloads…"); }
+      if (m.status === "failed") status(`Couldn't download the accurate speech model (${String(m.error).slice(0, 80)}). Still listening with the quick one.`, true);
+      if (m.error) status(`Speech-to-text failed: ${m.error.slice(0, 120)}. Try ⚙ → Built-in speech → Light.`, true);
       if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
     };
   }
@@ -104,7 +107,9 @@ async function onClip(wav) {
   busy++; setDot();
   try {
     const r = await transcribe(wav);
+    if (r?.error && r.error !== "browser") status(`Speech-to-text failed: ${String(r.error).slice(0, 120)}`, true);
     if (!r || r.error || !r.text || JUNK.test(r.text.trim()) || r.text.trim().split(/\s+/).length < 2) return;
+    heardSomething = Date.now();
     onText(r.text);
   } finally { busy--; setDot(); }
 }
@@ -139,7 +144,7 @@ function handle(text, joined = false) {
   // someone else, or where no callsign was heard, go in the list below,
   // greyed out, and never get a readback with your callsign on it.
   if (r.forMe !== true) {
-    return { el: !S.onlyMe && !r.unknown ? addOther(r) : null, pushed: 0 };
+    return { el: S.onlyMe ? null : addOther(r), pushed: 0 };
   }
   showNow(r, joined);
   let pushed = 0;
@@ -159,7 +164,7 @@ function addOther(r) {
   const el = document.createElement("div");
   el.className = "past other";
   const what = r.items.map((i) => i.say).filter(Boolean).join(", ");
-  el.innerHTML = `${r.to ? `For <b>${esc(r.to)}</b>` : "<b>No callsign</b>"} · ${esc(what || r.heard)}`;
+  el.innerHTML = r.unknown ? `<span class="chat">“${esc(r.heard)}”</span>` : `${r.to ? `For <b>${esc(r.to)}</b>` : "<b>No callsign</b>"} · ${esc(what || r.heard)}`;
   el.title = `Heard: ${r.heard}`;
   $("history").prepend(el);
   while ($("history").children.length > 12) $("history").lastChild.remove();
@@ -405,4 +410,13 @@ function freeGate() {
   if (!gateLabels || !S.flight || !S.flight.isOnGround) return null;
   const g = closestEmptyGate({ me: S.flight, aircraft: S.all || {}, labels: gateLabels, myCallsign: S.flightCs });
   return g ? g.name : null;
+}
+
+// ---- status line -------------------------------------------------------------------
+let heardSomething = 0;
+function status(text, bad = false) {
+  const el = $("status");
+  el.textContent = text;
+  el.hidden = !text;
+  el.classList.toggle("bad", !!bad);
 }
