@@ -98,6 +98,11 @@ const MISHEARD = [
   [/\bline up in wait\b|\bline up and weight\b/g, "line up and wait"],
   [/\bclear(?:ed)? for take ?off\b/g, "cleared for takeoff"],
   [/\bheading\s+(\d)\s+(\d)\s+(\d)\b/g, "heading $1$2$3"],
+  // "tax you to gate", "tacks via alpha" = taxi
+  [/\btax(?:i)? you\b|\btacks\b|\btaxing\b/g, "taxi"],
+  [/\btax\b(?= (?:to|via|again|onto|into|back)\b)/g, "taxi"],
+  // Gate / stand numbers said digit by digit: "gate 1 0" = gate 10
+  [/\b(gate|stand|parking|spot)\s+(\d)\s+(\d)\b(?!\s*\d)/g, "$1 $2$3"],
 ];
 
 // Letter names as speech-to-text writes them ("kay five" = K5).

@@ -17,7 +17,7 @@ const app = window.copilot || {
 const S = {
   callsign: localStorage.getItem("callsign") || "",
   atcCs: localStorage.getItem("atcCs") || "",
-  sttQuality: localStorage.getItem("sttQuality") || "accurate",
+  sttQuality: localStorage.getItem("sttQuality") || "auto",
   server: localStorage.getItem("server") || "main",
   source: localStorage.getItem("source") || "system",
   sens: +(localStorage.getItem("sens") || 3),
@@ -273,7 +273,8 @@ let lastLive = "";
 function renderLive() {
   const lines = track(targets(S.recent), S.flight);
   const landRwy = [...S.recent].reverse().find((i) => i.type === "land" || i.type === "approach")?.runway || null;
-  const tip = phaseTip(S.phase, S.flight, { callsign: sayCallsign(), runway: landRwy });
+  const lastTaxi = [...S.recent].reverse().find((i) => i.type === "taxi");
+  const tip = phaseTip(S.phase, S.flight, { callsign: sayCallsign(), runway: landRwy, gate: lastTaxi?.gate || null, route: lastTaxi?.route || [] });
   const html = lines.map((l) => `<div class="trk ${l.done ? "ok" : l.kind}">${esc(l.text)}</div>`).join("")
     + (tip ? `<div class="tip"><div class="tt">${esc(tip.title)}</div><div>${esc(tip.text)}</div>${tip.say ? `<div class="ts" title="Click to copy">SAY: ${esc(tip.say)}</div>` : ""}</div>` : "");
   if (html === lastLive) return;

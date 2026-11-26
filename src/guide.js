@@ -77,7 +77,7 @@ export function nextPhase(phase, prev, flight, recent = []) {
   return gs > 2 ? "taxiing" : "parked";
 }
 
-export function phaseTip(phase, flight, { callsign = "", runway = null } = {}) {
+export function phaseTip(phase, flight, { callsign = "", runway = null, gate = null, route = [] } = {}) {
   const cs = spokenCallsign(callsign) || "[callsign]";
   const rwy = runway ? `runway ${runway}` : "the runway";
   switch (phase) {
@@ -88,9 +88,12 @@ export function phaseTip(phase, flight, { callsign = "", runway = null } = {}) {
     case "stopped":
       return { title: "Request taxi", text: "You're stopped. Ask ATC for taxi to the gate, then wait for the route.", say: `${cs} requesting taxi pattern to gate.` };
     case "taxiin":
-      return { title: "Taxi to the gate", text: "Follow the taxiways ATC gave you, under 20 knots, and stop at your gate." };
+      return {
+        title: gate ? `Taxi to ${gate}` : "Taxi to the gate",
+        text: `${route.length ? `Route: ${route.join(" → ")}. ` : ""}${gate ? `Go to ${gate.toUpperCase().replace(/^(GATE|STAND|SPOT|PARKING)/, (w) => w.charAt(0) + w.slice(1).toLowerCase())}` : "Follow the taxiways ATC gave you"}, under 20 knots, and stop there.`,
+      };
     case "parkedin":
-      return { title: "At the gate", text: "You're parked. Engines off. Nice flight!" };
+      return { title: gate ? `At ${gate}` : "At the gate", text: "You're parked. Engines off. Nice flight!" };
     default:
       return null;
   }

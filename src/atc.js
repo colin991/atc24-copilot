@@ -197,10 +197,13 @@ const RULES = [
   (c) => {
     if (!/\btaxi\b/.test(c)) return null;
     const rwy = parseRunway(c);
-    const to = rwy ? `runway ${rwy}` : (/\btaxi (?:to )?(?:the )?((?:gate|stand|parking|apron|ramp)(?: \w+)?)/.exec(c) || [])[1];
+    // "taxi to gate 10", "taxi to stand 4b", "taxi to the apron"
+    const place = /\b(?:taxi|to)\s+(?:to\s+)?(?:the\s+)?(gate|stand|parking|apron|ramp|spot)(?:\s+(?!via\b)([a-z]?\d{1,3}[a-z]?|[a-z]))?\b/.exec(c);
+    const gate = place && place[2] ? place[2].toUpperCase() : null;
+    const to = rwy ? `runway ${rwy}` : place ? `${place[1]}${gate ? ` ${gate}` : ""}` : null;
     const via = /\bvia\s+([a-z0-9 ,]+?)(?=$|\bhold\b|\bcross\b|\brunway\b)/.exec(c);
     const route = via ? letters(via[1]) : [];
-    return [{ type: "taxi", runway: rwy, route, do: `Taxi${to ? ` to ${to}` : ""}${route.length ? ` via ${route.join(" → ")}` : ""}. Keep it under 20 knots.`, say: `taxi${to ? ` to ${to}` : ""}${route.length ? ` via ${route.join(", ")}` : ""}` }];
+    return [{ type: "taxi", runway: rwy, gate: gate ? `${place[1]} ${gate}` : null, route, do: `Taxi${to ? ` to ${to}` : ""}${route.length ? ` via ${route.join(" → ")}` : ""}. Keep it under 20 knots.`, say: `taxi${to ? ` to ${to}` : ""}${route.length ? ` via ${route.join(", ")}` : ""}` }];
   },
   (c) => {
     if (!/\bvacate\b|\bexit (?:the )?runway\b/.test(c)) return null;

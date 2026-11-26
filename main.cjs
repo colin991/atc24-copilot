@@ -9,6 +9,15 @@ const VERSION = app.getVersion();
 let win = null;
 let clickThrough = false;
 
+// Lets the built-in speech model use several CPU cores (much faster on PCs
+// without a usable graphics card).
+app.commandLine.appendSwitch("enable-features", "SharedArrayBuffer");
+// COPILOT_NO_GPU=1: test as if this PC had no usable graphics card.
+if (process.env.COPILOT_NO_GPU) app.commandLine.appendSwitch("disable-gpu");
+// Test runs from the source folder get their own profile, so they never
+// clash with an installed copy that is already open.
+if (!app.isPackaged) app.setPath("userData", path.join(app.getPath("appData"), "atc24-copilot-dev"));
+
 // ---- window position is remembered between runs ---------------------------
 const stateFile = () => path.join(app.getPath("userData"), "window.json");
 function loadBounds() {
@@ -58,7 +67,8 @@ function createWindow() {
       // COPILOT_TEST_WAV=<file>: feed a recorded call in as if it was heard.
       if (process.env.COPILOT_TEST_WAV) {
         const b64 = fs.readFileSync(process.env.COPILOT_TEST_WAV).toString("base64");
-        setTimeout(() => win.webContents.executeJavaScript(`localStorage.setItem("callsign","Speedbird-208"); window.__clip(Uint8Array.from(atob("${b64}"), c => c.charCodeAt(0)).buffer)`).catch((e) => console.log("[smoke] feed failed", e.message)), 1500);
+        // Feeds it 3 times and logs how long each took (the first includes loading the model).
+        setTimeout(() => win.webContents.executeJavaScript(`(async () => { localStorage.setItem("callsign","Speedbird-208"); const buf = Uint8Array.from(atob("${b64}"), c => c.charCodeAt(0)).buffer; for (let i = 0; i < 3; i++) { const t = performance.now(); await window.__clip(buf.slice(0)); console.log("[timing] call " + (i + 1) + ": " + Math.round(performance.now() - t) + " ms, " + document.getElementById("sttMode").textContent + ", say: " + document.getElementById("say").textContent); } })()`).catch((e) => console.log("[smoke] feed failed", e.message)), 1500);
       }
     });
     setTimeout(async () => {
