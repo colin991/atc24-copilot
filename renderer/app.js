@@ -2,13 +2,14 @@
 import { understand, spokenCallsign } from "../src/atc.js";
 import { buildCalls } from "../src/calls.js";
 import { targets, track, nextPhase, phaseTip } from "../src/guide.js";
+import { closestEmptyGate } from "../src/gates.js";
 import { Listener, listInputs, wavToFloat } from "./audio.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 // In a normal browser (for testing the page) there's no app around it.
 const app = window.copilot || {
-  aircraft: async () => null, atis: async () => null, airports: async () => null, plan: async () => null, sttStatus: async () => ({ fast: false }), transcribe: async () => ({ error: "browser" }),
+  aircraft: async () => null, taxiLabels: async () => null, atis: async () => null, airports: async () => null, plan: async () => null, sttStatus: async () => ({ fast: false }), transcribe: async () => ({ error: "browser" }),
   version: async () => "dev", setClickThrough() {}, minimize() {}, quit() {}, installUpdate() {}, on() {},
   checkUpdate: async () => ({ state: "dev", version: "dev" }), updateStatus: async () => ({ state: "dev", version: "dev" }),
 };
@@ -41,6 +42,7 @@ async function pollFlight() {
   if (q) {
     const all = await app.aircraft(S.server);
     if (all) {
+      S.all = all; // everyone, for finding an empty gate
       let hit = null;
       for (const [cs, a] of Object.entries(all)) {
         if (cs.toLowerCase() === q || (a.playerName || "").toLowerCase() === q) { hit = [cs, a]; break; }
@@ -303,7 +305,7 @@ function renderLive() {
   const lines = track(targets(S.recent), S.flight);
   const landRwy = [...S.recent].reverse().find((i) => i.type === "land" || i.type === "approach")?.runway || null;
   const lastTaxi = [...S.recent].reverse().find((i) => i.type === "taxi");
-  const tip = phaseTip(S.phase, S.flight, { callsign: sayCallsign(), runway: landRwy, gate: lastTaxi?.gate || null, route: lastTaxi?.route || [] });
+  const tip = phaseTip(S.phase, S.flight, { callsign: sayCallsign(), runway: landRwy, gate: lastTaxi?.gate || null, route: lastTaxi?.route || [], freeGate: freeGate() });
   const html = lines.map((l) => `<div class="trk ${l.done ? "ok" : l.kind}">${esc(l.text)}</div>`).join("")
     + (tip ? `<div class="tip"><div class="tt">${esc(tip.title)}</div><div>${esc(tip.text)}</div>${tip.say ? `<div class="ts" title="Click to copy">SAY: ${esc(tip.say)}</div>` : ""}</div>` : "");
   if (html === lastLive) return;
@@ -335,7 +337,7 @@ pollAtis(); setInterval(pollAtis, 30000);
 
 let lastCalls = "";
 function renderCalls() {
-  const { calls, next, where } = buildCalls({ callsign: sayCallsign(), flight: S.flight, plan: S.plan, atis: S.atis, airports: S.airports, recent: S.recent });
+  const { calls, next, where } = buildCalls({ callsign: sayCallsign(), flight: S.flight, plan: S.plan, atis: S.atis, airports: S.airports, recent: S.recent, freeGate: freeGate() });
   const html = calls.map((c) => `<div class="call${c.id === next ? " next" : ""}" data-id="${c.id}">
       <div class="t">${esc(c.title)}</div>
       <div class="x">${esc(c.text).replace(/\[([^\]]+)\]/g, "<i>[$1]</i>")}</div>
@@ -384,3 +386,12 @@ setInterval(() => {
     $("heard").textContent = ""; $("age").textContent = "";
   }
 }, 1000);
+
+// ---- closest empty gate ------------------------------------------------------------
+let gateLabels = null;
+app.taxiLabels().then((l) => { if (l) gateLabels = l; });
+function freeGate() {
+  if (!gateLabels || !S.flight || !S.flight.isOnGround) return null;
+  const g = closestEmptyGate({ me: S.flight, aircraft: S.all || {}, labels: gateLabels, myCallsign: S.flightCs });
+  return g ? g.name : null;
+}

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("copilot", {
   sttStatus: () => ipcRenderer.invoke("stt-status"),
   atis: () => ipcRenderer.invoke("atis"),
   airports: () => ipcRenderer.invoke("airports"),
+  taxiLabels: () => ipcRenderer.invoke("taxi-labels"),
   plan: (q) => ipcRenderer.invoke("plan", q),
   transcribe: (wav) => ipcRenderer.invoke("stt", wav),
   version: () => ipcRenderer.invoke("version"),

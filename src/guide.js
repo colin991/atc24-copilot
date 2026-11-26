@@ -77,16 +77,19 @@ export function nextPhase(phase, prev, flight, recent = []) {
   return gs > 2 ? "taxiing" : "parked";
 }
 
-export function phaseTip(phase, flight, { callsign = "", runway = null, gate = null, route = [] } = {}) {
+export function phaseTip(phase, flight, { callsign = "", runway = null, gate = null, route = [], freeGate = null } = {}) {
+  // The gate to ask for: the closest empty one, if we know it.
+  const askGate = freeGate ? `gate ${freeGate}` : "gate";
+  const freeNote = freeGate ? ` Closest empty gate: ${freeGate}.` : "";
   const cs = spokenCallsign(callsign) || "[callsign]";
   const rwy = runway ? `runway ${runway}` : "the runway";
   switch (phase) {
     case "landing":
       return { title: "Landed", text: `Brake and slow to taxi speed. Turn off ${rwy} at the next exit; don't stop on it.` };
     case "vacate":
-      return { title: "Clear the runway", text: `Keep going until you're past the yellow hold-short line, then STOP and call for taxi.`, say: `${cs} clear of ${rwy}, requesting taxi pattern to gate.` };
+      return { title: "Clear the runway", text: `Keep going until you're past the yellow hold-short line, then STOP and call for taxi.${freeNote}`, say: `${cs} clear of ${rwy}, requesting taxi pattern to ${askGate}.` };
     case "stopped":
-      return { title: "Request taxi", text: "You're stopped. Ask ATC for taxi to the gate, then wait for the route.", say: `${cs} requesting taxi pattern to gate.` };
+      return { title: "Request taxi", text: `You're stopped. Ask ATC for taxi to the gate, then wait for the route.${freeNote}`, say: `${cs} requesting taxi pattern to ${askGate}.` };
     case "taxiin":
       return {
         title: gate ? `Taxi to ${gate}` : "Taxi to the gate",

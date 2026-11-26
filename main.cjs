@@ -64,6 +64,8 @@ function createWindow() {
     win.webContents.on("console-message", (_e, level, message, line, source) => console.log(`[page ${level}] ${message} (${path.basename(source || "")}:${line})`));
     win.webContents.on("did-finish-load", () => {
       console.log("[smoke] page loaded");
+      // COPILOT_EVAL=<js>: run some page code after a few seconds and print the result.
+      if (process.env.COPILOT_EVAL) setTimeout(() => win.webContents.executeJavaScript(process.env.COPILOT_EVAL).then((v) => console.log("[eval]", JSON.stringify(v))).catch((e) => console.log("[eval] failed", e.message)), 6000);
       // COPILOT_TEST_WAV=<file>: feed a recorded call in as if it was heard.
       if (process.env.COPILOT_TEST_WAV) {
         const b64 = fs.readFileSync(process.env.COPILOT_TEST_WAV).toString("base64");
@@ -157,6 +159,8 @@ const getJson = async (url) => {
 };
 ipcMain.handle("atis", () => getJson(`${RADAR}/api/atis`));
 ipcMain.handle("airports", () => getJson(`${RADAR}/airports.json`));
+// Gate numbers and where they are, from the radar's ground charts.
+ipcMain.handle("taxi-labels", () => getJson(`${RADAR}/taxi-labels.json`));
 ipcMain.handle("plan", (_e, q) => getJson(`${LIVE}/api/plan?q=${encodeURIComponent(String(q || "").slice(0, 60))}`));
 ipcMain.handle("stt-status", async () => {
   try { const r = await fetch(`${RADAR}/api/stt`, { headers: { "User-Agent": UA } }); return r.ok ? await r.json() : { fast: false }; }

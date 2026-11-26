@@ -38,7 +38,7 @@ function atisFor(icao, atis) {
 
 const lastOf = (recent, type) => [...(recent || [])].reverse().find((i) => i.type === type);
 
-export function buildCalls({ callsign = "", flight = null, plan = null, atis = [], airports = null, recent = [] } = {}) {
+export function buildCalls({ callsign = "", flight = null, plan = null, atis = [], airports = null, recent = [], freeGate = null } = {}) {
   const cs = spokenCallsign(callsign) || blank("callsign");
   const onGround = flight ? !!flight.isOnGround : true;
   const here = nearestAirport(flight, airports) || (onGround ? plan?.departing : null);
@@ -85,7 +85,7 @@ export function buildCalls({ callsign = "", flight = null, plan = null, atis = [
       text: `Tower, ${cs} visual runway ${fill(arrRunway, "#")}.`,
       missing: [!arrRunway && "runway"].filter(Boolean),
     },
-    { id: "gate", title: "Taxi to gate", text: `${cs} requesting taxi pattern to gate.`, hint: "Only if needed." },
+    { id: "gate", title: "Taxi to gate", text: `${cs} requesting taxi pattern to ${freeGate ? `gate ${freeGate}` : "gate"}.`, hint: freeGate ? `Gate ${freeGate} is the closest empty one.` : "Only if needed." },
   ];
 
   // Which call is next? Go by what ATC last told you and where you are.
