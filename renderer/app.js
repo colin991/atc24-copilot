@@ -3,6 +3,7 @@ import { understand, spokenCallsign } from "../src/atc.js";
 import { buildCalls } from "../src/calls.js";
 import { targets, track, nextPhase, phaseTip } from "../src/guide.js";
 import { closestEmptyGate } from "../src/gates.js";
+import { soundsFrom, matchesLearned } from "../src/learn.js";
 import { Listener, listInputs, wavToFloat } from "./audio.js";
 import { loadVad } from "./vad.js";
 
@@ -166,6 +167,8 @@ function handle(text, joined = false) {
   // Easier to match while ATC is already talking to you (garbled callsigns).
   const match = Date.now() - (S.lastMineAt || 0) < 90000 ? 2.5 : 3;
   const r = understand(text, { callsign: myCallsign(), aliases: aliases(), flight: S.flight, match });
+  // Misheard versions of your callsign you taught it (by tapping a grey line).
+  if (r.forMe !== true && !r.to && matchesLearned(r.heard, learned)) r.forMe = true;
   if (r.forMe === true) S.lastMineAt = Date.now();
   console.log(`[call] forMe=${r.forMe} to=${r.to || ""} unknown=${r.unknown} readback=${JSON.stringify(r.readback)} heard=${JSON.stringify(r.heard)}`);
   // Only a call with YOUR callsign gets the big DO / SAY card. Calls for
@@ -192,8 +195,10 @@ function addOther(r) {
   const el = document.createElement("div");
   el.className = "past other";
   const what = r.items.map((i) => i.say).filter(Boolean).join(", ");
-  el.innerHTML = r.unknown ? `<span class="chat">“${esc(r.heard)}”</span>` : `${r.to ? `For <b>${esc(r.to)}</b>` : "<b>No callsign</b>"} · ${esc(what || r.heard)}`;
-  el.title = `Heard: ${r.heard}`;
+  el.innerHTML = r.unknown ? `<span class="chat">“${esc(r.heard)}”</span>`
+    : `${r.to ? `For <b>${esc(r.to)}</b>` : "<b>No callsign</b>"} · ${esc(what || r.heard)}<div class="heardline">Heard: “${esc(r.heard)}”</div>`;
+  el.title = "Tap if this was for you";
+  el._r = r; // for "that was for me"
   $("history").prepend(el);
   while ($("history").children.length > 12) $("history").lastChild.remove();
   return el;
@@ -454,3 +459,22 @@ function status(text, bad = false) {
 // Tells voices from engine noise; until it is loaded (or if it fails), loudness is used.
 loadVad().then((vad) => { listener.setVad(vad); console.log("[vad] speech detector ready"); })
   .catch((e) => console.log("[vad] speech detector unavailable, using loudness:", e?.message || e));
+
+// ---- "that was for me" -----------------------------------------------------------
+let learned = JSON.parse(localStorage.getItem("learned") || "[]");
+$("history").addEventListener("click", (e) => {
+  const el = e.target.closest(".past.other");
+  if (!el || !el._r) return;
+  const r = { ...el._r, forMe: true, to: null };
+  if (r.unknown) return;
+  // Remember how your callsign sounded this time.
+  const sounds = soundsFrom(r.heard).filter((w) => !learned.includes(w));
+  if (sounds.length) { learned = [...learned, ...sounds].slice(-30); localStorage.setItem("learned", JSON.stringify(learned)); }
+  el.remove();
+  S.lastMineAt = Date.now();
+  showNow(r);
+  S.recent.push(...r.items); S.recent = S.recent.slice(-30);
+  renderCalls(); renderLive();
+  status(sounds.length ? `Got it, that was yours. Next time "${sounds.join(" ")}" counts as your callsign.` : "Got it, that was yours.");
+  setTimeout(() => status(""), 6000);
+});
