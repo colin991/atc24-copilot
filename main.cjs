@@ -209,11 +209,11 @@ ipcMain.handle("stt-status", async () => {
   try { const r = await fetch(`${RADAR}/api/stt`, { headers: { "User-Agent": UA } }); return r.ok ? await r.json() : { fast: false }; }
   catch { return { fast: false }; }
 });
-ipcMain.handle("stt", async (_e, wav) => {
+ipcMain.handle("stt", async (_e, wav, hint) => {
   try {
     const r = await fetch(`${RADAR}/api/stt`, {
       method: "POST",
-      headers: { "Content-Type": "audio/wav", "X-ATC-Copilot": VERSION, "User-Agent": UA },
+      headers: { "Content-Type": "audio/wav", "X-ATC-Copilot": VERSION, "User-Agent": UA, "X-Callsign-Hint": String(hint || "").replace(/[^\w ,.-]/g, "").slice(0, 80) },
       body: Buffer.from(wav),
     });
     const j = await r.json().catch(() => ({}));

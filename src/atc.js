@@ -66,13 +66,47 @@ function callsignBits(s) {
   }
   return { digits, letters };
 }
-function fuzzyCallsign(s, me) {
+const RADIO_WORDS = new Set(("climb climbing cleared clear left right line lineup landing land level lights please position pushback push " +
+  "load leaving leave late lower low papers point plus pattern passing proceed parking pilot plane later look like lets list long").split(" "));
+
+// How much a stretch of speech sounds like my callsign, 0..~5:
+//   2   all my digits (1 for the first two of them)
+//   1   my name word ("november" for N522PL, "jetblue" for JetBlue 29W)
+//   1   each of my letters spelled out (0.5 if it's only inside a word:
+//       "bulimia" has "lima" in it, "pop" sounds like "papa")
+export function callsignScore(s, me) {
   const { digits, letters } = callsignBits(s);
-  return digits.includes(me.num) && me.suffix.split("").every((l) => letters.includes(l));
+  const words = ` ${s} `;
+  let score = 0;
+  if (me.num && digits.includes(me.num)) score += 2;
+  else if (me.num && me.num.length >= 3 && digits.includes(me.num.slice(0, 2))) score += 1;
+  const nameWord = me.name.length === 1 ? PHONETIC_WORD[me.name] : me.name;
+  if (nameWord && new RegExp(`\\b${nameWord.slice(0, Math.min(5, nameWord.length))}`).test(words)) score += 1;
+  // Letters: spelled out = 1; inside a word ("bulimia") or a word starting
+  // with the same sound ("pop" ~ papa, "leave" ~ lima) = 0.5.
+  let letterScore = 0;
+  // Ordinary radio words don't count as sounding like a letter ("climb" has "lim").
+  const early = s.split(/[\s,]+/).slice(0, 14).filter((x) => x.length > 1 && !RADIO_WORDS.has(x) && !PHONETIC[x]);
+  for (const l of me.suffix.split("")) {
+    const w = PHONETIC_WORD[l];
+    if (letters.includes(l)) letterScore += 1;
+    else if (w && early.some((x) => x.includes(w.slice(0, 3)) || x[0] === w[0])) letterScore += 0.5;
+  }
+  // A callsign with letters needs at least some sign of them, and clearly
+  // different letters ("522 alpha bravo" when you're "522 papa lima") rule it out.
+  const others = letters.replace(new RegExp(`[${me.suffix}${me.name.length === 1 ? me.name : ""}]`, "g"), "");
+  if (me.suffix && (letterScore === 0 || (others.length >= me.suffix.length && letterScore < me.suffix.length))) return Math.min(score, 2);
+  return score + letterScore;
+}
+// threshold: 3 normally; lower when the conversation already is with you.
+function fuzzyCallsign(s, me, threshold = 3) {
+  const { digits, letters } = callsignBits(s);
+  if (digits.includes(me.num) && me.suffix.split("").every((l) => letters.includes(l))) return true;
+  return callsignScore(s, me) >= threshold;
 }
 
 // Is this call for one of my callsigns? Returns which one ATC used.
-function addressee(text, mes) {
+function addressee(text, mes, threshold = 3) {
   // Callsign is normally first: "speedbird 208 , turn left ...", after any
   // filler ("copy , jetblue 29 whiskey , ...", "correction , ...").
   const parts = text.split(" , ");
@@ -94,7 +128,7 @@ function addressee(text, mes) {
     // Letters-and-numbers callsigns get mangled ("november 5 to 2 pop a limo",
     // "number 522 papalima" for N52PL): compare just the digits and the
     // spelled letters near the start of the call.
-    if (me.suffix && [parts.slice(0, 2), parts.slice(1, 3), parts.slice(-2)].some((p) => fuzzyCallsign(p.join(" "), me))) return { forMe: true, said: head, me };
+    if (me.suffix && [parts.slice(0, 2), parts.slice(1, 3), parts.slice(-2)].some((p) => fuzzyCallsign(p.join(" "), me, threshold))) return { forMe: true, said: head, me };
   }
   // Someone else's callsign up front: a word + a number
   const first = head.split(" ");
@@ -152,13 +186,15 @@ function parseAlt(s) {
 }
 const parseRunway = (s) => { const m = /\brunway\s+(\d{2}[LRC]?)/i.exec(s); return m ? m[1].toUpperCase() : null; };
 // The runway in this clause, or else the last one said before it
-// ("runway 15, wind 100 at 12, cleared for takeoff").
+// ("runway 15, wind 100 at 12, cleared for takeoff"), or else the next one
+// after it ("line up , runway 25L").
 function runwayFor(c, all) {
   const own = parseRunway(c);
   if (own) return own;
-  const before = all.slice(0, Math.max(0, all.indexOf(c)));
-  const list = [...before.matchAll(/\brunway\s+(\d{2}[LRC]?)/gi)];
-  return list.length ? list[list.length - 1][1].toUpperCase() : null;
+  const at = Math.max(0, all.indexOf(c));
+  const list = [...all.slice(0, at).matchAll(/\brunway\s+(\d{2}[LRC]?)/gi)];
+  if (list.length) return list[list.length - 1][1].toUpperCase();
+  return parseRunway(all.slice(at + c.length));
 }
 const parseFreq = (s) => { const m = /\b(1[1-3]\d\.\d{1,3})\b/.exec(s); return m ? m[1] : null; };
 const FACILITY = /\b(delivery|clearance|ground|tower|approach|departure|director|center|centre|control|radar|information|unicom)\b/;
@@ -217,7 +253,7 @@ const RULES = [
     return [{ type: "land", runway: rwy, do: `Land${rwy ? ` on runway ${rwy}` : ""}.`, say: `cleared to land${rwy ? ` runway ${rwy}` : ""}` }];
   },
   (c, all) => {
-    if (!/\bline up and wait\b|\blineup and wait\b|\bposition and hold\b/.test(c)) return null;
+    if (!/\bline ?up(?: and wait)?\b|\bposition and hold\b/.test(c) || /\bcleared (?:for )?take ?off\b/.test(c)) return null;
     const rwy = runwayFor(c, all);
     return [{ type: "lineup", runway: rwy, do: `Enter${rwy ? ` runway ${rwy}` : " the runway"}, line up on the centre line and stop. Do NOT take off.`, say: `line up and wait${rwy ? ` runway ${rwy}` : ""}` }];
   },
@@ -416,12 +452,14 @@ function clauses(text) {
   return out;
 }
 
-export function understand(transcript, { callsign = "", aliases = [], flight = null } = {}) {
+// match: 3 = normal; lower (e.g. 2) when ATC has just been talking to you, or
+// when nobody else on the server has a callsign like yours.
+export function understand(transcript, { callsign = "", aliases = [], flight = null, match = 3 } = {}) {
   const heard = normalize(transcript);
   // Every name you go by: in-game callsign, the one in your flight plan, and
   // whatever you told the app ATC calls you.
   const mes = [callsign, ...aliases].filter(Boolean).map((raw) => ({ raw, ...splitCallsign(raw) })).filter((m) => m.num);
-  const addr = addressee(heard, mes);
+  const addr = addressee(heard, mes, match);
   const ctx = { flight, consumedAll: false };
   const items = [];
   for (const c of clauses(heard)) {

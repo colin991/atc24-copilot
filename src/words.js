@@ -101,6 +101,8 @@ const MISHEARD = [
   // "tax you to gate", "tacks via alpha" = taxi
   [/\btax(?:i)? you\b|\btacks\b|\btaxing\b/g, "taxi"],
   [/\btax\b(?= (?:to|via|again|onto|into|back)\b)/g, "taxi"],
+  // "one way 25" = runway 25
+  [/\b(?:1|one|won) way\b(?= \d)/g, "runway"],
   // "whole drop", "hold shut" = hold short
   [/\bwhole\b(?= (?:short|at|drop|shut|position))/g, "hold"],
   [/\bhold (?:drop|shut|shore|sure)\b/g, "hold short"],

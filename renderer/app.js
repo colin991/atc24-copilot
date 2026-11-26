@@ -111,7 +111,7 @@ function setStt(text) { $("sttMode").textContent = text; $("mode").textContent =
 
 async function transcribe(wav) {
   if (S.fast) {
-    const r = await app.transcribe(wav);
+    const r = await app.transcribe(wav, [sayCallsign(), myCallsign()].filter(Boolean).join(", "));
     if (r.text !== undefined) return r;
     if (r.status === 503) { S.fast = false; setStt("built-in (on this PC)"); }
   }
@@ -163,7 +163,11 @@ function undo(res) {
 }
 
 function handle(text, joined = false) {
-  const r = understand(text, { callsign: myCallsign(), aliases: aliases(), flight: S.flight });
+  // Easier to match while ATC is already talking to you (garbled callsigns).
+  const match = Date.now() - (S.lastMineAt || 0) < 90000 ? 2.5 : 3;
+  const r = understand(text, { callsign: myCallsign(), aliases: aliases(), flight: S.flight, match });
+  if (r.forMe === true) S.lastMineAt = Date.now();
+  console.log(`[call] forMe=${r.forMe} to=${r.to || ""} unknown=${r.unknown} readback=${JSON.stringify(r.readback)} heard=${JSON.stringify(r.heard)}`);
   // Only a call with YOUR callsign gets the big DO / SAY card. Calls for
   // someone else, or where no callsign was heard, go in the list below,
   // greyed out, and never get a readback with your callsign on it.

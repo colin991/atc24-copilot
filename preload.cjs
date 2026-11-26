@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld("copilot", {
   airports: () => ipcRenderer.invoke("airports"),
   taxiLabels: () => ipcRenderer.invoke("taxi-labels"),
   plan: (q) => ipcRenderer.invoke("plan", q),
-  transcribe: (wav) => ipcRenderer.invoke("stt", wav),
+  transcribe: (wav, hint) => ipcRenderer.invoke("stt", wav, hint),
   version: () => ipcRenderer.invoke("version"),
   setClickThrough: (on) => ipcRenderer.send("click-through", on),
   minimize: () => ipcRenderer.send("minimize"),
