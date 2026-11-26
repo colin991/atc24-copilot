@@ -221,7 +221,8 @@ function showNow(r, joined = false) {
   void card.offsetWidth; // restart the animation
   card.classList.add("fresh");
   if (r.forMe === false) card.classList.add("other");
-  const cs = spokenCallsign(myCallsign());
+  // The callsign ATC uses (flight plan / your setting), else the in-game one.
+  const cs = spokenCallsign(sayCallsign());
   $("doList").innerHTML = r.unknown
     ? `<li class="muted">Not sure what that was. Ask ATC to say again.</li>`
     : r.items.map((i) => `<li>${esc(i.do)}</li>`).join("");
