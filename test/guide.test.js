@@ -32,7 +32,7 @@ test("landing walks you through vacating and asking for taxi", () => {
   p = nextPhase(p, null, air({ isOnGround: true, groundSpeed: 25 }));
   assert.equal(p, "vacate");
   const tip = phaseTip(p, null, { callsign: "JetBlue 29W", runway: "25" });
-  assert.equal(tip.say, "Jetblue 29 Whiskey clear of runway 25, requesting taxi pattern to gate.");
+  assert.equal(tip.say, "Jetblue Two Niner Whiskey clear of runway 25, requesting taxi pattern to gate.");
   p = nextPhase(p, null, air({ isOnGround: true, groundSpeed: 0 }));
   assert.equal(p, "stopped");
   p = nextPhase(p, null, air({ isOnGround: true, groundSpeed: 0 }), [{ type: "taxi" }]);

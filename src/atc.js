@@ -40,8 +40,14 @@ export function spokenCallsign(cs) {
   const letters = suffix.split("").filter(Boolean).map((l) => cap(PHONETIC_WORD[l] || l.toUpperCase()));
   // A one-letter prefix is spoken too: "N52PL" -> "November 52 Papa Lima"
   const first = name.length === 1 ? cap(PHONETIC_WORD[name] || name.toUpperCase()) : cap(name);
-  return [first, num, ...letters].filter(Boolean).join(" ");
+  // Registration-style callsigns (letters around the number, like N522PL) are
+  // said digit by digit with the phonetic alphabet: "November Five Two Two
+  // Papa Lima". Airline ones keep the number: "Speedbird 208".
+  const spelled = name.length === 1 || letters.length;
+  const digits = spelled ? num.split("").map((d) => DIGIT_WORDS[+d]) : [num];
+  return [first, ...digits, ...letters].filter(Boolean).join(" ");
 }
+const DIGIT_WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Niner"];
 
 // Phonetic words as speech-to-text mangles them ("pop a limo" = papa lima).
 const PHONETIC_SOUNDS = [
