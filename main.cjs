@@ -43,10 +43,12 @@ function createWindow() {
     transparent: true,
     resizable: true,
     alwaysOnTop: true,
-    skipTaskbar: false,
     hasShadow: false,
     backgroundColor: "#00000000",
     title: "ATC 24 Copilot",
+    // Test runs (COPILOT_SMOKE) stay invisible so they never pop up on screen.
+    show: !process.env.COPILOT_SMOKE,
+    skipTaskbar: !!process.env.COPILOT_SMOKE,
     icon: path.join(__dirname, "build", "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

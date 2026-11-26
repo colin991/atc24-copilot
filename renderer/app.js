@@ -106,7 +106,7 @@ function localWhisper(wav) {
     worker.postMessage({ id, audio: wavToFloat(wav), quality: S.sttQuality, noGpu });
   });
 }
-function setStt(text) { $("sttMode").textContent = text; $("mode").textContent = /fast/.test(text) ? "fast" : /built-in/.test(text) ? "local" : ""; }
+function setStt(text) { $("sttMode").textContent = text; $("mode").textContent = /online/.test(text) ? "online" : /built-in/.test(text) ? "on this PC" : ""; }
 
 async function transcribe(wav) {
   if (S.fast) {

@@ -75,7 +75,8 @@ async function ensure(quality, noGpu) {
     if (target !== size) return;
     const old = asr;
     asr = p; using = size; loading = null;
-    try { if (old && old !== p) await old.dispose?.(); } catch {}
+    // Free the old model only once any call it is working on has finished.
+    if (old && old !== p) setTimeout(() => { try { old.dispose?.(); } catch {} }, 30000);
     self.postMessage({ status: "ready", quality: size, device });
   }).catch((err) => { loading = null; self.postMessage({ status: "failed", error: String(err?.message || err) }); });
   if (!asr) await loading; // nothing to answer with yet (light was the target)
