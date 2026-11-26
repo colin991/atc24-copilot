@@ -79,7 +79,29 @@ export function normalize(raw) {
     .replace(/\brunway\s+(\d)\b(?![\d.])/g, "runway 0$1")
     .replace(/\b(\d{1,2})\s*(left|right|center|centre)\b(?=\s*(?:cleared|via|$|,))/g, (m, n, side) => `${n.padStart(2, "0")}${side[0].toUpperCase()}`)
     .replace(/\s+/g, " ");
+  t = joinTaxiways(t);
   return t.replace(/(\s*,\s*)+$/, "").trim();
+}
+
+// Letter names as speech-to-text writes them ("kay five" = K5).
+const LETTER_NAMES = {
+  ay: "a", bee: "b", be: "b", see: "c", sea: "c", cee: "c", dee: "d", ee: "e", eff: "f", gee: "g", aitch: "h",
+  jay: "j", kay: "k", okay: "k", el: "l", em: "m", en: "n", pee: "p", cue: "q", queue: "q", tee: "t", tea: "t",
+  vee: "v", zee: "z", zed: "z",
+};
+
+// "kilo 5", "kay 5", "k 5" -> "k5": one taxiway name, so every rule sees it.
+// Not where the callsign goes (start of the call or of a clause), so
+// "Delta 12, ..." stays a callsign.
+function joinTaxiways(t) {
+  const names = [...Object.keys(PHONETIC), ...Object.keys(LETTER_NAMES), "[a-z]"].join("|");
+  return t.replace(new RegExp(`\\b(${names})\\s+(\\d{1,2})\\b(?![\\d.]| ?(?:thousand|hundred|knots|feet))`, "g"), (m, word, num, offset, all) => {
+    const before = all.slice(0, offset).trim();
+    if (!before || before.endsWith(",")) return m; // callsign position
+    if (/\b(?:runway|heading|squawk|fl|speed|level|climb|descend|maintain)$/.test(before)) return m;
+    const letter = PHONETIC[word] ? PHONETIC[word].toLowerCase() : LETTER_NAMES[word] || word;
+    return `${letter}${num}`;
+  });
 }
 
 // Words used for letters on the radio (taxiways, waypoints).

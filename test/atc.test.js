@@ -90,3 +90,11 @@ test("approach clearance and go around", () => {
 test("nothing recognised falls through to the model", () => {
   assert.equal(understand("Speedbird 208 the weather is lovely today", me).unknown, true);
 });
+
+test("taxiways with numbers stay whole (K5, not K)", () => {
+  assert.equal(understand("Speedbird 208 hold short of kilo five", me).readback, "Hold short K5, Speedbird 208");
+  assert.equal(understand("Speedbird 208 taxi via Kay five", me).readback, "Taxi via K5, Speedbird 208");
+  assert.equal(understand("Speedbird 208 hold short runway 25 at kilo 5", me).readback, "Hold short runway 25 at K5, Speedbird 208");
+  assert.equal(understand("Speedbird 208 cross runway 25 at K5", me).readback, "Cross runway 25 at K5, Speedbird 208");
+  assert.equal(understand("Speedbird 208 taxi to runway 07 via alpha two, kilo five, hold short runway 07", me).readback, "Taxi to runway 07 via A2, K5, hold short runway 07, Speedbird 208");
+});

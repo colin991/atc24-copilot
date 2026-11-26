@@ -1,12 +1,13 @@
 // The overlay: hears a call -> text -> what to do + what to say back.
 import { understand, spokenCallsign } from "../src/atc.js";
+import { buildCalls } from "../src/calls.js";
 import { Listener, listInputs, wavToFloat } from "./audio.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 // In a normal browser (for testing the page) there's no app around it.
 const app = window.copilot || {
-  aircraft: async () => null, sttStatus: async () => ({ fast: false }), transcribe: async () => ({ error: "browser" }),
+  aircraft: async () => null, atis: async () => null, airports: async () => null, plan: async () => null, sttStatus: async () => ({ fast: false }), transcribe: async () => ({ error: "browser" }),
   version: async () => "dev", setClickThrough() {}, minimize() {}, quit() {}, installUpdate() {}, on() {},
 };
 
@@ -22,6 +23,10 @@ const S = {
   flight: null,      // your aircraft from the radar
   flightCs: "",      // its callsign, e.g. "Speedbird-208"
   fast: false,       // online speech-to-text available
+  plan: null,        // your flight plan (from the radar's live server)
+  atis: [],          // ATIS for every airport
+  airports: null,    // airport positions
+  recent: [],        // ATC instructions for you this flight (for "My calls")
 };
 const save = (k, v) => { S[k] = v; localStorage.setItem(k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)); };
 
@@ -97,6 +102,13 @@ function handle(text) {
   if (r.forMe === false && S.onlyMe) { addHistory(r, false); return; }
   if (r.unknown && r.forMe !== true) { addHistory(r, false); return; } // chatter, not an instruction
   showNow(r);
+  if (r.forMe !== false && !r.unknown) {
+    // A new clearance starts a new flight.
+    if (r.items.some((i) => i.type === "clearance")) S.recent = [];
+    S.recent.push(...r.items);
+    S.recent = S.recent.slice(-30);
+    renderCalls();
+  }
 }
 
 function showNow(r) {
@@ -193,7 +205,50 @@ bindSettings();
 app.version().then((v) => ($("ver").textContent = v));
 app.sttStatus().then((s) => { S.fast = !!s.fast; setStt(S.fast ? "fast (online)" : "built-in (on this PC)"); });
 pollFlight();
-setInterval(pollFlight, 3000); // the radar's feed updates every ~3 s
+setInterval(() => { pollFlight().then(renderCalls); }, 3000); // the radar's feed updates every ~3 s
+
+// ---- My calls -------------------------------------------------------------------
+async function pollPlan() {
+  const q = S.flightCs || S.callsign.trim();
+  if (!q) return;
+  const p = await app.plan(q);
+  if (p && (!S.plan || p.departing !== S.plan.departing || p.arriving !== S.plan.arriving)) S.plan = p;
+  renderCalls();
+}
+async function pollAtis() { const a = await app.atis(); if (Array.isArray(a)) S.atis = a; renderCalls(); }
+app.airports().then((a) => { if (a) S.airports = a; renderCalls(); });
+pollPlan(); setInterval(pollPlan, 20000);
+pollAtis(); setInterval(pollAtis, 30000);
+
+let lastCalls = "";
+function renderCalls() {
+  const { calls, next, where } = buildCalls({ callsign: myCallsign(), flight: S.flight, plan: S.plan, atis: S.atis, airports: S.airports, recent: S.recent });
+  const html = calls.map((c) => `<div class="call${c.id === next ? " next" : ""}" data-id="${c.id}">
+      <div class="t">${esc(c.title)}</div>
+      <div class="x">${esc(c.text).replace(/\[([^\]]+)\]/g, "<i>[$1]</i>")}</div>
+      ${c.hint || c.missing?.length ? `<div class="h">${esc([c.hint, c.missing?.length ? `Missing: ${c.missing.join(", ")}` : ""].filter(Boolean).join(" · "))}</div>` : ""}
+    </div>`).join("");
+  const w = [where.airport && `At <b>${esc(where.airport)}</b>`, where.atis && `ATIS <b>${esc(where.atis)}</b>`, where.runway && `runway <b>${esc(where.runway)}</b>`, where.dest && `to <b>${esc(where.dest)}</b>`].filter(Boolean).join(" · ");
+  const key = html + w;
+  if (key === lastCalls) return;
+  lastCalls = key;
+  $("callList").innerHTML = html;
+  $("where").innerHTML = w || "Fly or file a flight plan and the blanks fill in.";
+}
+$("callList").addEventListener("click", (e) => {
+  const card = e.target.closest(".call"); if (!card) return;
+  navigator.clipboard.writeText(card.querySelector(".x").textContent).then(() => { card.classList.add("copied"); setTimeout(() => card.classList.remove("copied"), 1200); });
+});
+document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  const calls = b.dataset.tab === "calls";
+  document.body.classList.toggle("callsMode", calls);
+  $("callsView").hidden = !calls;
+  localStorage.setItem("tab", b.dataset.tab);
+  renderCalls();
+}));
+if (localStorage.getItem("tab") === "calls") document.querySelector('#tabs button[data-tab="calls"]').click();
+window.__calls = { S, renderCalls };
 if (window.copilot) startAudio(); else { $("heard").textContent = "Browser preview: type a call in ⚙ settings to test."; setDot(); }
 window.__test = handle; // for trying calls from the dev console
 window.__clip = onClip;

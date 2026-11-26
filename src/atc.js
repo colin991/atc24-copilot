@@ -153,14 +153,20 @@ const RULES = [
   (c) => {
     if (!/\bhold short\b/.test(c)) return null;
     const rwy = parseRunway(c);
-    const twy = /\bhold short (?:of )?(?:taxiway )?([a-z]+\d?)\b/.exec(c);
-    const what = rwy ? `runway ${rwy}` : twy ? letters(twy[1]).join("") || twy[1].toUpperCase() : "";
-    return [{ type: "holdshort", runway: rwy, do: `STOP before ${what || "the runway"}. Do not cross the hold line.`, say: `hold short${what ? ` ${what}` : ""}` }];
+    // "hold short of K5", "hold short runway 25 at K5"
+    const twyWord = (/\bhold short (?:of )?(?:taxiway )?([a-z]\d{1,2}|[a-z]+)\b/.exec(c) || [])[1];
+    const twy = twyWord && twyWord !== "runway" ? letters(twyWord).join("") : "";
+    const at = (/\b(?:at|on)\s+(?:taxiway\s+)?([a-z]\d{0,2}|[a-z]+)\b/.exec(c) || [])[1];
+    const atTwy = at ? letters(at).join("") : "";
+    const what = rwy ? `runway ${rwy}${atTwy ? ` at ${atTwy}` : ""}` : twy;
+    return [{ type: "holdshort", runway: rwy, taxiway: atTwy || twy || null, do: `STOP before ${what || "the runway"}. Do not cross the hold line.`, say: `hold short${what ? ` ${what}` : ""}` }];
   },
   (c) => {
     const m = /\bcross (?:runway\s+)?(\d{2}[LRC]?)/.exec(c);
     if (!m) return null;
-    return [{ type: "cross", runway: m[1], do: `Cross runway ${m[1]} now, don't stop on it.`, say: `cross runway ${m[1]}` }];
+    const at = (/\b(?:at|via)\s+(?:taxiway\s+)?([a-z]\d{0,2}|[a-z]+)\b/.exec(c) || [])[1];
+    const t = at ? letters(at).join("") : "";
+    return [{ type: "cross", runway: m[1], do: `Cross runway ${m[1]}${t ? ` at ${t}` : ""} now, don't stop on it.`, say: `cross runway ${m[1]}${t ? ` at ${t}` : ""}` }];
   },
   (c) => {
     if (!/\btaxi\b/.test(c)) return null;

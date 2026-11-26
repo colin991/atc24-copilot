@@ -30,6 +30,24 @@ header button:hover { background: rgba(255, 255, 255, 0.1); color: var(--text); 
 .strip { font-size: 12px; color: var(--muted); background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 5px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .strip b { color: var(--text); }
 
+.tabs { display: flex; gap: 4px; background: rgba(255, 255, 255, 0.05); border-radius: 9px; padding: 3px; }
+.tabs button { flex: 1; border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; padding: 4px 0; border-radius: 7px; cursor: pointer; transition: background .2s, color .2s; }
+.tabs button.on { background: rgba(255, 255, 255, 0.14); color: var(--text); }
+.calls { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; flex: 1; scrollbar-width: none; animation: pop .25s ease; }
+.calls::-webkit-scrollbar { display: none; }
+#callList { display: flex; flex-direction: column; gap: 6px; }
+.where { font-size: 11px; color: var(--muted); }
+.where b { color: var(--text); }
+.call { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--edge); border-radius: 10px; padding: 7px 10px; cursor: pointer; transition: background .15s, border-color .15s; }
+.call:hover { background: rgba(125, 211, 252, 0.08); }
+.call.next { border-color: var(--do); background: rgba(250, 204, 21, 0.07); order: -1; }
+.call .t { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; display: flex; gap: 6px; }
+.call.next .t::after { content: "NEXT"; color: var(--do); }
+.call .x { font-size: 13.5px; font-weight: 650; color: var(--say); margin-top: 2px; user-select: text; }
+.call .x i { color: var(--do); font-style: normal; }
+.call .h { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.call.copied .t::before { content: "copied ·"; color: var(--ok); }
+body.callsMode #now, body.callsMode #history { display: none; }
 .card { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--edge); border-radius: 12px; padding: 9px 11px; animation: pop 0.35s ease; }
 .card.fresh { animation: flash 1.2s ease; }
 @keyframes pop { from { transform: translateY(6px); opacity: 0; } }

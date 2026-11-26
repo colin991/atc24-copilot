@@ -22,6 +22,16 @@
 
     <div id="flight" class="strip">Set your callsign in ⚙ settings</div>
 
+    <div class="tabs" id="tabs">
+      <button data-tab="atc" class="on">ATC says</button>
+      <button data-tab="calls">My calls</button>
+    </div>
+
+    <section id="callsView" class="calls" hidden>
+      <div id="where" class="where"></div>
+      <div id="callList"></div>
+    </section>
+
     <section id="now" class="card empty">
       <div class="label">DO</div>
       <ol id="doList"><li class="muted">Waiting for ATC…</li></ol>

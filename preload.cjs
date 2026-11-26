@@ -4,6 +4,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("copilot", {
   aircraft: (server) => ipcRenderer.invoke("acft", server),
   sttStatus: () => ipcRenderer.invoke("stt-status"),
+  atis: () => ipcRenderer.invoke("atis"),
+  airports: () => ipcRenderer.invoke("airports"),
+  plan: (q) => ipcRenderer.invoke("plan", q),
   transcribe: (wav) => ipcRenderer.invoke("stt", wav),
   version: () => ipcRenderer.invoke("version"),
   setClickThrough: (on) => ipcRenderer.send("click-through", on),

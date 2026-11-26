@@ -112,8 +112,10 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => app.quit());
-app.on("will-quit", () => globalShortcut.unregisterAll());
-if (!app.requestSingleInstanceLock()) app.quit();
+// Hotkeys only exist once the app is ready (a second copy quits before that).
+app.on("will-quit", () => { if (app.isReady()) globalShortcut.unregisterAll(); });
+// Only one copy: opening it again just brings the first one forward.
+if (!app.requestSingleInstanceLock()) { app.exit(0); }
 else app.on("second-instance", () => { if (win) { win.show(); win.focus(); } });
 
 // ---- network (done here, not in the page, so there are no CORS limits) -----
@@ -124,6 +126,15 @@ ipcMain.handle("acft", async (_e, server) => {
     return r.ok ? await r.json() : null;
   } catch { return null; }
 });
+// For "My calls": ATIS letters/runways, airport positions, and your flight
+// plan (from the radar's live server, which is the only place plans are kept).
+const LIVE = "https://atc24-radar-live.onrender.com";
+const getJson = async (url) => {
+  try { const r = await fetch(url, { headers: { "User-Agent": UA } }); return r.ok ? await r.json() : null; } catch { return null; }
+};
+ipcMain.handle("atis", () => getJson(`${RADAR}/api/atis`));
+ipcMain.handle("airports", () => getJson(`${RADAR}/airports.json`));
+ipcMain.handle("plan", (_e, q) => getJson(`${LIVE}/api/plan?q=${encodeURIComponent(String(q || "").slice(0, 60))}`));
 ipcMain.handle("stt-status", async () => {
   try { const r = await fetch(`${RADAR}/api/stt`, { headers: { "User-Agent": UA } }); return r.ok ? await r.json() : { fast: false }; }
   catch { return { fast: false }; }
