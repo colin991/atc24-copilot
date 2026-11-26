@@ -73,6 +73,9 @@ export class Listener {
     this.floor = Math.max(this.floor, 0.0005);
     const speech = rms > this.floor * this.sensitivity && rms > 0.004;
     this.onLevel?.(rms, this.floor, speech || !!this.clip);
+    // Every ~5 s, a line for troubleshooting (seen when run with COPILOT_SMOKE).
+    this.n = (this.n || 0) + 1; this.sum = (this.sum || 0) + rms; this.max = Math.max(this.max || 0, rms);
+    if (this.n >= 156) { console.log(`[vad] avg ${(this.sum / this.n).toFixed(4)} max ${this.max.toFixed(4)} floor ${this.floor.toFixed(4)} threshold ${(this.floor * this.sensitivity).toFixed(4)} inClip ${!!this.clip}${this.clip ? ` (${(this.clip.length * 0.032).toFixed(1)} s)` : ""}`); this.n = 0; this.sum = 0; this.max = 0; }
     if (this.paused) { this.clip = null; return; }
 
     if (!this.clip) {

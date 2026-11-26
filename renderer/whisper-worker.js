@@ -29,8 +29,8 @@ async function hasGpu() {
 }
 
 // What "auto" means on this PC.
-async function pick(quality) {
-  const gpu = await hasGpu();
+async function pick(quality, noGpu) {
+  const gpu = noGpu ? false : await hasGpu();
   if (quality !== "auto") return { size: quality, gpu };
   if (gpu) return { size: "accurate", gpu };
   const cores = self.navigator?.hardwareConcurrency || 2;
@@ -59,8 +59,8 @@ async function load(size, gpu, report) {
   return { p, device: "cpu" };
 }
 
-async function ensure(quality) {
-  const { size, gpu } = await pick(quality);
+async function ensure(quality, noGpu) {
+  const { size, gpu } = await pick(quality, noGpu);
   if (target === size && (asr || loading)) return;
   target = size;
   // Something to answer with straight away: the light model (small, quick).
@@ -82,9 +82,9 @@ async function ensure(quality) {
 }
 
 self.onmessage = async (e) => {
-  const { id, audio, quality = "auto" } = e.data;
+  const { id, audio, quality = "auto", noGpu = false } = e.data;
   try {
-    await ensure(quality);
+    await ensure(quality, noGpu);
     const started = performance.now();
     const out = await asr(audio);
     self.postMessage({ id, text: (out.text || "").trim(), ms: Math.round(performance.now() - started), model: using });

@@ -69,11 +69,23 @@ const aliases = () => [S.atcCs, S.plan?.filed].filter((x) => x && x.trim());
 const sayCallsign = () => aliases()[0] || myCallsign();
 
 // ---- speech to text ------------------------------------------------------------
-let worker = null, workerReady = false, nextId = 1;
-const pending = new Map();
+let worker = null, workerReady = false, nextId = 1, noGpu = false;
+const pending = new Map(); // id -> { resolve, timer }
+// Gave up on a stuck speech engine: answer everything waiting with an error,
+// and start again on the CPU (the graphics card can hang while a game uses it).
+function resetWorker(why) {
+  try { worker?.terminate(); } catch {}
+  worker = null; workerReady = false;
+  for (const [, p] of pending) { clearTimeout(p.timer); p.resolve({ error: why }); }
+  pending.clear();
+  if (!noGpu) { noGpu = true; status("Speech on the graphics card got stuck, so it switched to the CPU. Listening again.", true); }
+  else status("The speech engine got stuck and restarted. Listening again.", true);
+  setTimeout(() => { if (worker) status(""); }, 8000);
+}
 function localWhisper(wav) {
   if (!worker) {
     worker = new Worker(new URL("./whisper-worker.js", import.meta.url), { type: "module" });
+    worker.onerror = (e) => resetWorker(`crashed: ${e.message || "unknown"}`);
     worker.onmessage = (e) => {
       const m = e.data;
       if (m.status === "loading") { setStt("built-in (loading speech model…)"); status("Loading the speech model…"); }
@@ -81,11 +93,18 @@ function localWhisper(wav) {
       if (m.status === "ready") { workerReady = true; setStt(`built-in (${m.device === "gpu" ? "graphics card" : "CPU"}, ${m.quality}${m.interim ? ", upgrading…" : ""})`); if (!m.interim) status(""); else status("Listening with the quick model while the accurate one downloads…"); }
       if (m.status === "failed") status(`Couldn't download the accurate speech model (${String(m.error).slice(0, 80)}). Still listening with the quick one.`, true);
       if (m.error) status(`Speech-to-text failed: ${m.error.slice(0, 120)}. Try ⚙ → Built-in speech → Light.`, true);
-      if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+      if (m.id && pending.has(m.id)) { const p = pending.get(m.id); clearTimeout(p.timer); p.resolve(m); pending.delete(m.id); }
     };
   }
   const id = nextId++;
-  return new Promise((resolve) => { pending.set(id, resolve); worker.postMessage({ id, audio: wavToFloat(wav), quality: S.sttQuality }); });
+  return new Promise((resolve) => {
+    // A call takes 1-3 s once the model is loaded; much longer means it's stuck.
+    // (While the first model downloads, allow up to 2 minutes.)
+    const limit = workerReady ? 15000 + 4000 * pending.size : 120000;
+    const timer = setTimeout(() => resetWorker("took too long"), limit);
+    pending.set(id, { resolve, timer });
+    worker.postMessage({ id, audio: wavToFloat(wav), quality: S.sttQuality, noGpu });
+  });
 }
 function setStt(text) { $("sttMode").textContent = text; $("mode").textContent = /fast/.test(text) ? "fast" : /built-in/.test(text) ? "local" : ""; }
 
@@ -106,8 +125,10 @@ let busy = 0;
 async function onClip(wav) {
   busy++; setDot();
   try {
+    const t0 = performance.now();
     const r = await transcribe(wav);
-    if (r?.error && r.error !== "browser") status(`Speech-to-text failed: ${String(r.error).slice(0, 120)}`, true);
+    console.log(`[stt] ${((wav.byteLength - 44) / 32000).toFixed(1)} s clip -> ${Math.round(performance.now() - t0)} ms: ${r?.error ? "ERROR " + r.error : JSON.stringify(r?.text)}`);
+    if (r?.error && !/^(browser|took too long|crashed)/.test(r.error)) status(`Speech-to-text failed: ${String(r.error).slice(0, 120)}`, true);
     if (!r || r.error || !r.text || JUNK.test(r.text.trim()) || r.text.trim().split(/\s+/).length < 2) return;
     heardSomething = Date.now();
     onText(r.text);
